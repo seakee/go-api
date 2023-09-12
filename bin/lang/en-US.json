@@ -1,0 +1,12 @@
+{
+  "-1": "System is busy",
+  "0": "ok",
+  "500": "fail",
+  "400": "Request parameter error",
+  "10001": "Unauthorized",
+  "10002": "Authorization has failed",
+  "10003": "Authorization failed",
+  "10004": "Application does not exist or account info error",
+  "10005": "Application already exists",
+  "10006": "User does not exist"
+}

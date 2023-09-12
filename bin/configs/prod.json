@@ -1,0 +1,89 @@
+{
+  "system": {
+    "name": "go-api",
+    "run_mode": "release",
+    "http_port": ":8080",
+    "read_timeout": 60,
+    "write_timeout": 60,
+    "version": "1.0.0",
+    "debug_mode": true,
+    "default_lang": "zh-CN",
+    "jwt_secret": "",
+    "token_expire": 604800
+  },
+  "log": {
+    "driver": "stdout",
+    "level": "debug",
+    "path": "storage/logs/"
+  },
+  "databases": [
+    {
+      "enable": true,
+      "db_type": "mysql",
+      "db_name": "db_name",
+      "db_host": "db_host",
+      "db_username": "db_username",
+      "db_password": "db_password",
+      "db_max_idle_conn": 10,
+      "db_max_open_conn": 50,
+      "db_max_lifetime": 3
+    },
+    {
+      "enable": false,
+      "db_type": "mongo",
+      "db_name": "db_name",
+      "db_host": "db_host",
+      "db_username": "db_username",
+      "db_password": "db_password",
+      "db_max_open_conn": 50
+    }
+  ],
+  "cache": {
+    "driver": "redis",
+    "prefix": "go-api"
+  },
+  "redis": [
+    {
+      "enable": true,
+      "name": "go-api",
+      "host": "127.0.0.1:6379",
+      "auth": "",
+      "max_idle": 30,
+      "max_active": 100,
+      "idle_timeout": 30,
+      "prefix": "go-api",
+      "db": 0
+    }
+  ],
+  "kafka": {
+    "brokers": [
+      "addr1",
+      "addr2",
+      "addr3"
+    ],
+    "max_retry": 1,
+    "client_id": "go-api",
+    "producer_enable": false,
+    "consumer_enable": false,
+    "consumer_group": "consumerGroup",
+    "consumer_topics": [
+      "topic1",
+      "topic2",
+      "topic3"
+    ],
+    "consumer_auto_submit": true
+  },
+  "monitor": {
+    "panic_robot": {
+      "enable": false,
+      "wechat": {
+        "enable": false,
+        "push_url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx"
+      },
+      "feishu": {
+        "enable": false,
+        "push_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
+      }
+    }
+  }
+}
