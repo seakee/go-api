@@ -22,6 +22,7 @@ type (
 		Redis     []Redis     `json:"redis"`     // Redis 配置
 		Kafka     Kafka       `json:"kafka"`     // Kafka 配置
 		Monitor   Monitor     `json:"monitor"`   // 监控配置
+		Feishu    Feishu      `json:"feishu"`    // 飞书配置
 	}
 
 	LogConfig struct {
@@ -99,6 +100,14 @@ type (
 	robotConfig struct {
 		Enable  bool   `json:"enable"`
 		PushUrl string `json:"push_url"`
+	}
+
+	Feishu struct {
+		Enable       bool   `json:"enable"`
+		GroupWebhook string `json:"group_webhook"`
+		AppID        string `json:"app_id"`
+		AppSecret    string `json:"app_secret"`
+		EncryptKey   string `json:"encrypt_key"`
 	}
 )
 

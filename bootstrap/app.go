@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/app/http/middleware"
+	"github.com/sk-pkg/feishu"
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/kafka"
 	"github.com/sk-pkg/logger"
@@ -24,6 +25,7 @@ type App struct {
 	KafkaProducer *kafka.Manager
 	KafkaConsumer *kafka.Manager
 	Mux           *gin.Engine
+	Feishu        *feishu.Manager
 }
 
 func NewApp(config *app.Config) (*App, error) {
@@ -35,6 +37,11 @@ func NewApp(config *app.Config) (*App, error) {
 	}
 
 	a.loadRedis()
+
+	err = a.loadFeishu()
+	if err != nil {
+		return nil, err
+	}
 
 	err = a.loadI18n()
 	if err != nil {
@@ -152,4 +159,26 @@ func (a *App) loadDB() error {
 	a.Logger.Info("Databases loaded successfully")
 
 	return nil
+}
+
+// loadFeishu 加载飞书模块
+func (a *App) loadFeishu() error {
+	var err error
+
+	if a.Config.Feishu.Enable {
+		a.Feishu, err = feishu.New(
+			feishu.WithGroupWebhook(a.Config.Feishu.GroupWebhook),
+			feishu.WithAppID(a.Config.Feishu.AppID),
+			feishu.WithAppSecret(a.Config.Feishu.AppSecret),
+			feishu.WithEncryptKey(a.Config.Feishu.EncryptKey),
+			feishu.WithRedis(a.Redis["dudu"]),
+			feishu.WithLog(a.Logger),
+		)
+
+		if err == nil {
+			a.Logger.Info("Feishu loaded successfully")
+		}
+	}
+
+	return err
 }
