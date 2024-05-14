@@ -1,7 +1,8 @@
 package auth
 
 import (
-	"github.com/pkg/errors"
+	"errors"
+	"fmt"
 	"gorm.io/gorm"
 )
 
@@ -32,7 +33,7 @@ func (a *App) First(db *gorm.DB) (app *App, err error) {
 
 func (a *App) Create(db *gorm.DB) (id uint, err error) {
 	if err = db.Create(a).Error; err != nil {
-		return 0, errors.Wrap(err, "create err")
+		return 0, fmt.Errorf("create failed: %w", err)
 	}
 
 	id = a.ID
@@ -42,14 +43,14 @@ func (a *App) Create(db *gorm.DB) (id uint, err error) {
 
 func (a *App) Delete(db *gorm.DB) (err error) {
 	if err = db.Delete(a).Error; err != nil {
-		return errors.Wrap(err, "delete err")
+		return fmt.Errorf("delete failed: %w", err)
 	}
 	return
 }
 
 func (a *App) Updates(db *gorm.DB, m map[string]interface{}) (err error) {
 	if err = db.Model(&App{}).Where("id = ?", a.ID).Updates(m).Error; err != nil {
-		return errors.Wrap(err, "updates err")
+		return fmt.Errorf("updates failed: %w", err)
 	}
 	return
 }
