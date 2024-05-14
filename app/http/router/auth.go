@@ -6,7 +6,7 @@ import (
 )
 
 func authGroup(api *gin.RouterGroup, core *Core) {
-	authHandler := auth.New(core.Logger, core.Redis["go-api"], core.I18n, core.MysqlDB["go_api"])
+	authHandler := auth.New(core.Logger, core.Redis["go-api"], core.I18n, core.MysqlDB["go-api"])
 	{
 		api.POST("app", core.Middleware.CheckAppAuth(), authHandler.Create())
 		api.POST("token", authHandler.GetToken())
