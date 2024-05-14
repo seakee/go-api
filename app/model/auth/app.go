@@ -16,14 +16,14 @@ type App struct {
 	Status      uint8  `gorm:"column:status" json:"status"`
 }
 
-func (App) TableName() string {
+func (a *App) TableName() string {
 	return "auth_app"
 }
 
 func (a *App) First(db *gorm.DB) (app *App, err error) {
 	err = db.Where(a).First(&app).Error
 
-	if err != nil && err == gorm.ErrRecordNotFound {
+	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 

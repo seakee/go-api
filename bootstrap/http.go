@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app/http/middleware"
 	"github.com/seakee/go-api/app/http/router"
@@ -39,7 +40,7 @@ func (a *App) startHTTPServer() {
 	}
 
 	// 监听HTTP服务
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		a.Logger.Fatal("http server startup err", zap.Error(err))
 	}
 }
