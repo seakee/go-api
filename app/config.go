@@ -45,6 +45,7 @@ type (
 		EnvKey       string        `json:"env_key"`       // 运行环境key，用来读取运行环境
 		JwtSecret    string        `json:"jwt_secret"`    // 鉴权服务JwtSecret
 		TokenExpire  time.Duration `json:"token_expire"`  // 鉴权服务token过期时间(秒)
+		Env          string        `json:"env"`           // 运行环境
 	}
 
 	Databases struct {
@@ -142,6 +143,7 @@ func LoadConfig() (*Config, error) {
 	config.System.RootPath = rootPath
 	config.System.EnvKey = envKey
 	config.System.LangDir = rootPath + "lang"
+	config.System.Env = runEnv
 
 	checkConfig(config)
 
