@@ -70,6 +70,8 @@ func (a *App) Start() {
 	go a.startHTTPServer()
 	// 启动kafka消费
 	go a.startKafkaConsumer()
+	// 启动调度任务
+	go a.startSchedule()
 }
 
 // loadLogger 加载日志模块
@@ -171,7 +173,7 @@ func (a *App) loadFeishu() error {
 			feishu.WithAppID(a.Config.Feishu.AppID),
 			feishu.WithAppSecret(a.Config.Feishu.AppSecret),
 			feishu.WithEncryptKey(a.Config.Feishu.EncryptKey),
-			feishu.WithRedis(a.Redis["dudu"]),
+			feishu.WithRedis(a.Redis["go-api"]),
 			feishu.WithLog(a.Logger),
 		)
 
