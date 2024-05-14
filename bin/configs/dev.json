@@ -85,5 +85,12 @@
         "push_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxxx"
       }
     }
+  },
+  "feishu" : {
+    "enable": false,
+    "app_id": "app_id",
+    "app_secret": "app_secret",
+    "encrypt_key": "",
+    "group_webhook": "group_webhook0"
   }
 }
