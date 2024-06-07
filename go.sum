@@ -116,8 +116,8 @@ github.com/rogpeppe/go-internal v1.12.0 h1:exVL4IDcn6na9z1rAb56Vxr+CgyK3nn3O+epU
 github.com/rogpeppe/go-internal v1.12.0/go.mod h1:E+RYuTGaKKdloAfM02xzb0FW3Paa99yedzYV+kq4uf4=
 github.com/sk-pkg/feishu v0.1.6 h1:F9z21aK7HV8J4bBwj3x4ZpHfljc3iY0LkPmQj/qAUtA=
 github.com/sk-pkg/feishu v0.1.6/go.mod h1:VOW3FBeAgXC6UGj0TOq0aZKaoYBQIVDqmYu0LJbLY8k=
-github.com/sk-pkg/i18n v1.1.0 h1:fWq0Wg6cAxPUgcnoQTqj4jNHfLtrE/uU+LTsdqqoghc=
-github.com/sk-pkg/i18n v1.1.0/go.mod h1:VFTL524u9ERTCennJoui69zpPx5zue6jJvJqrG0RF7g=
+github.com/sk-pkg/i18n v1.2.0 h1:uW9Q2pAdhLa8Pls6yC5bdH3qB1Tu1rcLG0YQbriU334=
+github.com/sk-pkg/i18n v1.2.0/go.mod h1:VFTL524u9ERTCennJoui69zpPx5zue6jJvJqrG0RF7g=
 github.com/sk-pkg/kafka v1.0.1 h1:PCuvYTzNNyCMlbdUyohuUdomBKLWfncJnz05F8z9wxI=
 github.com/sk-pkg/kafka v1.0.1/go.mod h1:R99NMa39NQLJJZnNg6yZsG2BAe9y3xb4zF+i7tmRUsQ=
 github.com/sk-pkg/logger v1.0.0 h1:GRqxTkCKxv/Fto+EywekMO0QUQeZ4K1X9gZJWeUYmVQ=
