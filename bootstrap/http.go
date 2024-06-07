@@ -49,6 +49,8 @@ func (a *App) startHTTPServer() {
 func (a *App) loadMux() {
 	mux := gin.New()
 
+	mux.Use(a.Middleware.SetTraceID())
+
 	if a.Config.System.DebugMode {
 		mux.Use(a.Middleware.RequestLogger())
 	}
@@ -81,6 +83,6 @@ func (a *App) loadPanicRobot(mux *gin.Engine) {
 
 // loadHTTPMiddlewares 加载HTTP中间件
 func (a *App) loadHTTPMiddlewares() {
-	a.Middleware = middleware.New(a.Logger, a.I18n, a.MysqlDB, a.Redis)
+	a.Middleware = middleware.New(a.Logger, a.I18n, a.MysqlDB, a.Redis, a.TraceID)
 	a.Logger.Info("Middlewares loaded successfully")
 }

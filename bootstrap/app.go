@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/app/http/middleware"
+	"github.com/seakee/go-api/app/pkg/trace"
 	"github.com/sk-pkg/feishu"
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/kafka"
@@ -26,6 +27,7 @@ type App struct {
 	KafkaConsumer *kafka.Manager
 	Mux           *gin.Engine
 	Feishu        *feishu.Manager
+	TraceID       *trace.ID
 }
 
 func NewApp(config *app.Config) (*App, error) {
@@ -72,6 +74,11 @@ func (a *App) Start() {
 	go a.startKafkaConsumer()
 	// 启动调度任务
 	go a.startSchedule()
+}
+
+// loadTrace 加载 TraceID
+func (a *App) loadTrace() {
+	a.TraceID = trace.NewTraceID()
 }
 
 // loadLogger 加载日志模块

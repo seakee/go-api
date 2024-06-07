@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/seakee/go-api/app/pkg/trace"
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/redis"
 	"go.uber.org/zap"
@@ -15,16 +16,19 @@ type (
 		Cors() gin.HandlerFunc
 
 		RequestLogger() gin.HandlerFunc
+
+		SetTraceID() gin.HandlerFunc
 	}
 
 	middleware struct {
-		logger *zap.Logger
-		i18n   *i18n.Manager
-		db     map[string]*gorm.DB
-		redis  map[string]*redis.Manager
+		logger  *zap.Logger
+		i18n    *i18n.Manager
+		db      map[string]*gorm.DB
+		redis   map[string]*redis.Manager
+		traceID *trace.ID
 	}
 )
 
-func New(logger *zap.Logger, i18n *i18n.Manager, db map[string]*gorm.DB, redis map[string]*redis.Manager) Middleware {
-	return &middleware{logger: logger, i18n: i18n, db: db, redis: redis}
+func New(logger *zap.Logger, i18n *i18n.Manager, db map[string]*gorm.DB, redis map[string]*redis.Manager, traceID *trace.ID) Middleware {
+	return &middleware{logger: logger, i18n: i18n, db: db, redis: redis, traceID: traceID}
 }
