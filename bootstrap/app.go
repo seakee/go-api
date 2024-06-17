@@ -55,6 +55,7 @@ func NewApp(config *app.Config) (*App, error) {
 		return nil, err
 	}
 
+	a.loadTrace()
 	a.loadHTTPMiddlewares()
 	a.loadMux()
 
