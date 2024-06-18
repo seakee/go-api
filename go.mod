@@ -6,10 +6,10 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-resty/resty/v2 v2.13.1
 	github.com/golang-jwt/jwt/v5 v5.2.1
-	github.com/sk-pkg/feishu v0.1.6
+	github.com/sk-pkg/feishu v0.1.9
 	github.com/sk-pkg/i18n v1.2.0
 	github.com/sk-pkg/kafka v1.0.1
-	github.com/sk-pkg/logger v1.0.0
+	github.com/sk-pkg/logger v1.1.1
 	github.com/sk-pkg/monitor v0.1.0
 	github.com/sk-pkg/mysql v1.0.1
 	github.com/sk-pkg/redis v1.0.1
