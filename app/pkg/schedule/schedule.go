@@ -1,24 +1,28 @@
 package schedule
 
 import (
+	"context"
+	"github.com/seakee/go-api/app/pkg/trace"
+	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
-	"go.uber.org/zap"
 	"time"
 )
 
 type (
 	Schedule struct {
-		Logger *zap.Logger
-		Redis  *redis.Manager
-		Job    []*Job
+		Logger  *logger.Manager
+		Redis   *redis.Manager
+		Job     []*Job
+		TraceID *trace.ID
 	}
 )
 
-func New(logger *zap.Logger, redis *redis.Manager) *Schedule {
+func New(logger *logger.Manager, redis *redis.Manager, traceID *trace.ID) *Schedule {
 	return &Schedule{
-		Logger: logger,
-		Redis:  redis,
-		Job:    make([]*Job, 0),
+		Logger:  logger,
+		Redis:   redis,
+		Job:     make([]*Job, 0),
+		TraceID: traceID,
 	}
 }
 
@@ -47,7 +51,8 @@ func (s *Schedule) Start() {
 		ticker := time.NewTicker(time.Second)
 		for range ticker.C {
 			for _, j := range s.Job {
-				j.run()
+				ctx := context.WithValue(context.Background(), logger.TraceIDKey, s.TraceID.New())
+				j.run(ctx)
 			}
 		}
 	}()

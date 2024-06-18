@@ -1,23 +1,24 @@
 package consumer
 
 import (
+	"context"
 	"github.com/sk-pkg/kafka"
+	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
-	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 type (
 	Core struct {
-		Logger        *zap.Logger
+		Logger        *logger.Manager
 		Redis         *redis.Manager
 		MysqlDB       map[string]*gorm.DB
 		KafkaConsumer *kafka.Manager
 	}
 )
 
-func NewAutoSubmit(core *Core) {
-	core.Logger.Info("Kafka Auto Submit Consumer started successfully")
+func NewAutoSubmit(ctx context.Context, core *Core) {
+	core.Logger.Info(ctx, "Kafka Auto Submit Consumer started successfully")
 	for {
 		select {
 		// 取一条消费信息
@@ -32,10 +33,10 @@ func NewAutoSubmit(core *Core) {
 	}
 }
 
-func New(core *Core) {
+func New(ctx context.Context, core *Core) {
 	// handler := test.New(core.Logger, core.Redis, core.MysqlDB["test"])
 
-	core.Logger.Info("Kafka Consumer started successfully")
+	core.Logger.Info(ctx, "Kafka Consumer started successfully")
 	for {
 		select {
 		// 取一个消费者

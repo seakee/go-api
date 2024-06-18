@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app/http/middleware"
@@ -13,7 +14,7 @@ import (
 )
 
 // startHTTPServer 启动HTTP服务
-func (a *App) startHTTPServer() {
+func (a *App) startHTTPServer(ctx context.Context) {
 	gin.SetMode(a.Config.System.RunMode)
 
 	core := &router.Core{
@@ -41,12 +42,12 @@ func (a *App) startHTTPServer() {
 
 	// 监听HTTP服务
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		a.Logger.Fatal("http server startup err", zap.Error(err))
+		a.Logger.Fatal(ctx, "http server startup err", zap.Error(err))
 	}
 }
 
 // loadMux 加载gin引擎
-func (a *App) loadMux() {
+func (a *App) loadMux(ctx context.Context) {
 	mux := gin.New()
 
 	mux.Use(a.Middleware.SetTraceID())
@@ -62,7 +63,7 @@ func (a *App) loadMux() {
 
 	a.Mux = mux
 
-	a.Logger.Info("Mux loaded successfully")
+	a.Logger.Info(ctx, "Mux loaded successfully")
 }
 
 // loadPanicRobot 加载panic监控机器人
@@ -82,7 +83,7 @@ func (a *App) loadPanicRobot(mux *gin.Engine) {
 }
 
 // loadHTTPMiddlewares 加载HTTP中间件
-func (a *App) loadHTTPMiddlewares() {
+func (a *App) loadHTTPMiddlewares(ctx context.Context) {
 	a.Middleware = middleware.New(a.Logger, a.I18n, a.MysqlDB, a.Redis, a.TraceID)
-	a.Logger.Info("Middlewares loaded successfully")
+	a.Logger.Info(ctx, "Middlewares loaded successfully")
 }

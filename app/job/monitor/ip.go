@@ -1,10 +1,12 @@
 package monitor
 
 import (
+	"context"
 	"fmt"
 	"github.com/go-resty/resty/v2"
 	"github.com/seakee/go-api/app/pkg/schedule"
 	"github.com/sk-pkg/feishu"
+	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
 	"go.uber.org/zap"
 	"strings"
@@ -19,7 +21,7 @@ const (
 type ipHandler struct {
 	done   chan struct{}
 	error  chan error
-	logger *zap.Logger
+	logger *logger.Manager
 	redis  *redis.Manager
 	lastIp string
 	feishu *feishu.Manager
@@ -35,7 +37,7 @@ func (ih *ipHandler) setLastIp() {
 	ih.lastIp = lastIp
 }
 
-func (ih *ipHandler) Exec() {
+func (ih *ipHandler) Exec(ctx context.Context) {
 	ih.setLastIp()
 
 	client := resty.New()
@@ -43,7 +45,7 @@ func (ih *ipHandler) Exec() {
 	if err == nil && res != nil && res.StatusCode() == 200 {
 		currentIp := strings.TrimRight(string(res.Body()), "\n")
 		if ih.lastIp != currentIp && currentIp != "" {
-			ih.logger.Info("IP has changed", zap.String("last ip", ih.lastIp), zap.String("current ip", currentIp))
+			ih.logger.Info(ctx, "IP has changed", zap.String("last ip", ih.lastIp), zap.String("current ip", currentIp))
 			ih.lastIp = currentIp
 
 			if err = ih.redis.SetString(lastIpKey, currentIp, 0); err != nil {
@@ -65,7 +67,7 @@ func (ih *ipHandler) Done() <-chan struct{} {
 	return ih.done
 }
 
-func NewIpMonitor(logger *zap.Logger, redis *redis.Manager) schedule.HandlerFunc {
+func NewIpMonitor(logger *logger.Manager, redis *redis.Manager) schedule.HandlerFunc {
 	return &ipHandler{
 		done:   make(chan struct{}),
 		error:  make(chan error),

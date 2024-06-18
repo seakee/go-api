@@ -1,7 +1,9 @@
 package schedule
 
 import (
+	"context"
 	"fmt"
+	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
 	"github.com/sk-pkg/util"
 	"go.uber.org/zap"
@@ -20,17 +22,17 @@ const (
 
 type (
 	Job struct {
-		Name                  string         // 任务实例名
-		Logger                *zap.Logger    // 日志
-		Redis                 *redis.Manager // Redis
-		Handler               HandlerFunc    // 执行器
-		EnableMultipleServers bool           // 允许多节点执行
-		EnableOverlapping     bool           // 允许即使之前的任务实例还在执行，调度内的任务也会执行
-		RunTime               *RunTime       // 任务实例运行时参数
+		Name                  string          // 任务实例名
+		Logger                *logger.Manager // 日志
+		Redis                 *redis.Manager  // Redis
+		Handler               HandlerFunc     // 执行器
+		EnableMultipleServers bool            // 允许多节点执行
+		EnableOverlapping     bool            // 允许即使之前的任务实例还在执行，调度内的任务也会执行
+		RunTime               *RunTime        // 任务实例运行时参数
 	}
 
 	HandlerFunc interface {
-		Exec()
+		Exec(ctx context.Context)
 		Error() <-chan error
 		Done() <-chan struct{}
 	}
@@ -120,28 +122,28 @@ func (j *Job) OnOneServer() *Job {
 }
 
 // runWithRecover 为任务运行添加了recover，以防止panic导致的程序崩溃
-func (j *Job) runWithRecover() {
+func (j *Job) runWithRecover(ctx context.Context) {
 	defer func() {
 		// 如果有panic，记录错误并继续
 		if r := recover(); r != nil {
-			j.Logger.Error("job has a panic error", zap.Any("error", r))
+			j.Logger.Error(ctx, "job has a panic error", zap.Any("error", r))
 		}
 	}()
 
-	j.handler()
+	j.handler(ctx)
 }
 
 // run 方法根据不同的运行类型执行任务。
 // 对于每日运行类型，它将在指定的时间点执行任务。
 // 对于每秒、每分钟、每小时运行类型，它将基于定时器定期执行任务。
-func (j *Job) run() {
+func (j *Job) run(ctx context.Context) {
 	switch j.RunTime.Type {
 	case DailyRunType:
 		// 遍历每日运行的时间点，若当前时间匹配，则启动任务执行
 		times := j.RunTime.Time.([]string)
 		for _, t := range times {
 			if time.Now().Format("15:04:05") == t {
-				go j.runWithRecover()
+				go j.runWithRecover(ctx)
 			}
 		}
 	case PerSecondsRunType, PerMinuitRunType, PerHourRunType:
@@ -154,7 +156,7 @@ func (j *Job) run() {
 		go func() {
 			ticker := time.NewTicker(j.RunTime.Time.(time.Duration))
 			for range ticker.C {
-				go j.runWithRecover()
+				go j.runWithRecover(ctx)
 			}
 		}()
 	}
@@ -163,7 +165,7 @@ func (j *Job) run() {
 // handler 方法负责处理任务的执行逻辑。
 // 它首先会检查是否允许任务重叠执行，然后根据是否启用多个服务器执行任务的模式进行加锁处理。
 // 最后，它会异步执行任务并处理可能的错误。
-func (j *Job) handler() {
+func (j *Job) handler(ctx context.Context) {
 	if !j.EnableOverlapping {
 		// 任务重叠执行不允许时的加锁逻辑
 		if j.RunTime.Locked {
@@ -179,25 +181,25 @@ func (j *Job) handler() {
 			return
 		}
 
-		go j.renewalServerLock()
+		go j.renewalServerLock(ctx)
 	}
 
 	// 随机休眠
 	j.randomDelay()
 
-	j.Logger.Info(util.SpliceStr("The scheduled job: ", j.Name, " starts execution."))
+	j.Logger.Info(ctx, util.SpliceStr("The scheduled job: ", j.Name, " starts execution."))
 
 	// 异步执行任务逻辑
-	go j.Handler.Exec()
+	go j.Handler.Exec(ctx)
 
 	// 错误处理和任务完成后的清理逻辑
-	go func() {
+	go func(ctx context.Context) {
 	Exit:
 		for {
 			select {
 			case err := <-j.Handler.Error():
 				if err != nil {
-					j.Logger.Error(fmt.Sprintf("An error occurred while executing the %s.", j.Name), zap.Error(err))
+					j.Logger.Error(ctx, fmt.Sprintf("An error occurred while executing the %s.", j.Name), zap.Error(err))
 				}
 			case <-j.Handler.Done():
 				// 任务完成后的清理逻辑
@@ -207,12 +209,12 @@ func (j *Job) handler() {
 
 				j.RunTime.Locked = false
 
-				j.Logger.Info(util.SpliceStr("The scheduled job: ", j.Name, " has done."))
+				j.Logger.Info(ctx, util.SpliceStr("The scheduled job: ", j.Name, " has done."))
 
 				break Exit
 			}
 		}
-	}()
+	}(ctx)
 }
 
 // randomDelay 在设定的时间区间内随机生成一个时间段（秒），休眠
@@ -251,17 +253,17 @@ func (j *Job) lock(name string, ttl int, renewal bool) bool {
 }
 
 // unLock 方法用于释放指定名称的锁。
-func (j *Job) unLock(name string) {
+func (j *Job) unLock(ctx context.Context, name string) {
 	key := util.SpliceStr("schedule:jobLock:", j.Name, ":", name)
 
 	ok, err := j.Redis.Del(key)
 	if !ok && err != nil {
-		j.Logger.Error(util.SpliceStr("unLock job:", name, "failed"), zap.Error(err))
+		j.Logger.Error(ctx, util.SpliceStr("unLock job:", name, "failed"), zap.Error(err))
 	}
 }
 
 // renewalServerLock 方法用于定期续期服务器锁，确保锁不会过期。
-func (j *Job) renewalServerLock() {
+func (j *Job) renewalServerLock(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 Exit:
 	for {
@@ -271,7 +273,7 @@ Exit:
 			j.lock("Server", defaultServerLockTTL, true)
 		case <-j.RunTime.Done:
 			// 任务完成或取消时释放服务器锁
-			j.unLock("Server")
+			j.unLock(ctx, "Server")
 			break Exit
 		}
 	}

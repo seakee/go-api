@@ -5,13 +5,13 @@ import (
 	"github.com/seakee/go-api/app/http/middleware"
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/kafka"
+	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
-	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
 type Core struct {
-	Logger        *zap.Logger
+	Logger        *logger.Manager
 	Redis         map[string]*redis.Manager
 	I18n          *i18n.Manager
 	MysqlDB       map[string]*gorm.DB

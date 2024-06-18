@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"context"
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/app/http/middleware"
@@ -11,14 +12,13 @@ import (
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/mysql"
 	"github.com/sk-pkg/redis"
-	"go.uber.org/zap"
 	"gorm.io/gorm"
 	"time"
 )
 
 type App struct {
 	Config        *app.Config
-	Logger        *zap.Logger
+	Logger        *logger.Manager
 	Redis         map[string]*redis.Manager
 	I18n          *i18n.Manager
 	MysqlDB       map[string]*gorm.DB
@@ -33,33 +33,36 @@ type App struct {
 func NewApp(config *app.Config) (*App, error) {
 	a := &App{Config: config, MysqlDB: map[string]*gorm.DB{}, Redis: map[string]*redis.Manager{}}
 
-	err := a.loadLogger()
-	if err != nil {
-		return nil, err
-	}
-
-	a.loadRedis()
-
-	err = a.loadFeishu()
-	if err != nil {
-		return nil, err
-	}
-
-	err = a.loadI18n()
-	if err != nil {
-		return nil, err
-	}
-
-	err = a.loadDB()
-	if err != nil {
-		return nil, err
-	}
-
 	a.loadTrace()
-	a.loadHTTPMiddlewares()
-	a.loadMux()
 
-	err = a.loadKafka()
+	ctx := context.WithValue(context.Background(), logger.TraceIDKey, a.TraceID.New())
+
+	err := a.loadLogger(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	a.loadRedis(ctx)
+
+	err = a.loadFeishu(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.loadI18n(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = a.loadDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	a.loadHTTPMiddlewares(ctx)
+	a.loadMux(ctx)
+
+	err = a.loadKafka(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -69,12 +72,13 @@ func NewApp(config *app.Config) (*App, error) {
 
 // Start 启动应用
 func (a *App) Start() {
+	ctx := context.WithValue(context.Background(), logger.TraceIDKey, a.TraceID.New())
 	// 启动HTTP服务
-	go a.startHTTPServer()
+	go a.startHTTPServer(ctx)
 	// 启动kafka消费
-	go a.startKafkaConsumer()
+	go a.startKafkaConsumer(ctx)
 	// 启动调度任务
-	go a.startSchedule()
+	go a.startSchedule(ctx)
 }
 
 // loadTrace 加载 TraceID
@@ -83,7 +87,7 @@ func (a *App) loadTrace() {
 }
 
 // loadLogger 加载日志模块
-func (a *App) loadLogger() error {
+func (a *App) loadLogger(ctx context.Context) error {
 	var err error
 	a.Logger, err = logger.New(
 		logger.WithLevel(a.Config.Log.Level),
@@ -92,14 +96,14 @@ func (a *App) loadLogger() error {
 	)
 
 	if err == nil {
-		a.Logger.Info("Loggers loaded successfully")
+		a.Logger.Info(ctx, "Loggers loaded successfully")
 	}
 
 	return err
 }
 
 // loadRedis 加载Redis模块
-func (a *App) loadRedis() {
+func (a *App) loadRedis(ctx context.Context) {
 	for _, cfg := range a.Config.Redis {
 		if cfg.Enable {
 			r := redis.New(
@@ -116,11 +120,11 @@ func (a *App) loadRedis() {
 		}
 	}
 
-	a.Logger.Info("Redis loaded successfully")
+	a.Logger.Info(ctx, "Redis loaded successfully")
 }
 
 // loadI18n 加载国际化模块
-func (a *App) loadI18n() error {
+func (a *App) loadI18n(ctx context.Context) error {
 	var err error
 	a.I18n, err = i18n.New(
 		i18n.WithDebugMode(a.Config.System.DebugMode),
@@ -130,14 +134,14 @@ func (a *App) loadI18n() error {
 	)
 
 	if err == nil {
-		a.Logger.Info("I18n loaded successfully")
+		a.Logger.Info(ctx, "I18n loaded successfully")
 	}
 
 	return err
 }
 
 // loadDB 加载数据库模块
-func (a *App) loadDB() error {
+func (a *App) loadDB(ctx context.Context) error {
 
 	for _, db := range a.Config.Databases {
 		if db.Enable {
@@ -166,13 +170,13 @@ func (a *App) loadDB() error {
 		}
 	}
 
-	a.Logger.Info("Databases loaded successfully")
+	a.Logger.Info(ctx, "Databases loaded successfully")
 
 	return nil
 }
 
 // loadFeishu 加载飞书模块
-func (a *App) loadFeishu() error {
+func (a *App) loadFeishu(ctx context.Context) error {
 	var err error
 
 	if a.Config.Feishu.Enable {
@@ -182,11 +186,11 @@ func (a *App) loadFeishu() error {
 			feishu.WithAppSecret(a.Config.Feishu.AppSecret),
 			feishu.WithEncryptKey(a.Config.Feishu.EncryptKey),
 			feishu.WithRedis(a.Redis["go-api"]),
-			feishu.WithLog(a.Logger),
+			feishu.WithLog(a.Logger.Zap),
 		)
 
 		if err == nil {
-			a.Logger.Info("Feishu loaded successfully")
+			a.Logger.Info(ctx, "Feishu loaded successfully")
 		}
 	}
 

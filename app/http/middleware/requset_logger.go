@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"github.com/gin-gonic/gin"
+	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/util"
 	"go.uber.org/zap"
 	"io"
@@ -39,7 +41,14 @@ func (m middleware) RequestLogger() gin.HandlerFunc {
 		// 请求IP
 		clientIP := util.GetRealIP(c)
 
-		m.logger.Info(
+		traceID, exists := c.Get("trace_id")
+		if !exists {
+			traceID = m.traceID.New()
+		}
+
+		ctx := context.WithValue(context.Background(), logger.TraceIDKey, traceID.(string))
+
+		m.logger.Info(ctx,
 			"Request Logs",
 			zap.Int("StatusCode", statusCode),
 			zap.Any("Latency", latencyTime),
