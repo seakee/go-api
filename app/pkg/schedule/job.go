@@ -189,9 +189,6 @@ func (j *Job) handler(ctx context.Context) {
 
 	j.Logger.Info(ctx, util.SpliceStr("The scheduled job: ", j.Name, " starts execution."))
 
-	// 异步执行任务逻辑
-	go j.Handler.Exec(ctx)
-
 	// 错误处理和任务完成后的清理逻辑
 	go func(ctx context.Context) {
 	Exit:
@@ -215,6 +212,8 @@ func (j *Job) handler(ctx context.Context) {
 			}
 		}
 	}(ctx)
+
+	j.Handler.Exec(ctx)
 }
 
 // randomDelay 在设定的时间区间内随机生成一个时间段（秒），休眠
