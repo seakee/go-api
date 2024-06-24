@@ -9,6 +9,7 @@ func (m middleware) SetTraceID() gin.HandlerFunc {
 		traceID := c.GetHeader("X-Trace-ID")
 		if traceID == "" {
 			traceID = m.traceID.New()
+			c.Writer.Header().Set("X-Trace-ID", traceID)
 		}
 
 		c.Set("trace_id", traceID)
