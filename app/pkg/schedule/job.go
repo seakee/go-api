@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"github.com/seakee/go-api/app/pkg/trace"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
 	"github.com/sk-pkg/util"
@@ -29,6 +30,7 @@ type (
 		EnableMultipleServers bool            // 允许多节点执行
 		EnableOverlapping     bool            // 允许即使之前的任务实例还在执行，调度内的任务也会执行
 		RunTime               *RunTime        // 任务实例运行时参数
+		TraceID               *trace.ID
 	}
 
 	HandlerFunc interface {
@@ -122,7 +124,9 @@ func (j *Job) OnOneServer() *Job {
 }
 
 // runWithRecover 为任务运行添加了recover，以防止panic导致的程序崩溃
-func (j *Job) runWithRecover(ctx context.Context) {
+func (j *Job) runWithRecover() {
+	ctx := context.WithValue(context.Background(), logger.TraceIDKey, j.TraceID.New())
+
 	defer func() {
 		// 如果有panic，记录错误并继续
 		if r := recover(); r != nil {
@@ -136,14 +140,14 @@ func (j *Job) runWithRecover(ctx context.Context) {
 // run 方法根据不同的运行类型执行任务。
 // 对于每日运行类型，它将在指定的时间点执行任务。
 // 对于每秒、每分钟、每小时运行类型，它将基于定时器定期执行任务。
-func (j *Job) run(ctx context.Context) {
+func (j *Job) run() {
 	switch j.RunTime.Type {
 	case DailyRunType:
 		// 遍历每日运行的时间点，若当前时间匹配，则启动任务执行
 		times := j.RunTime.Time.([]string)
 		for _, t := range times {
 			if time.Now().Format("15:04:05") == t {
-				go j.runWithRecover(ctx)
+				go j.runWithRecover()
 			}
 		}
 	case PerSecondsRunType, PerMinuitRunType, PerHourRunType:
@@ -156,7 +160,7 @@ func (j *Job) run(ctx context.Context) {
 		go func() {
 			ticker := time.NewTicker(j.RunTime.Time.(time.Duration))
 			for range ticker.C {
-				go j.runWithRecover(ctx)
+				go j.runWithRecover()
 			}
 		}()
 	}

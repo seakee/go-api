@@ -1,7 +1,6 @@
 package schedule
 
 import (
-	"context"
 	"github.com/seakee/go-api/app/pkg/trace"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
@@ -39,6 +38,7 @@ func (s *Schedule) addJob(name string, handlerFunc HandlerFunc) *Job {
 		EnableMultipleServers: true,
 		EnableOverlapping:     true,
 		RunTime:               &RunTime{Done: make(chan struct{})},
+		TraceID:               s.TraceID,
 	}
 
 	s.Job = append(s.Job, j)
@@ -51,8 +51,7 @@ func (s *Schedule) Start() {
 		ticker := time.NewTicker(time.Second)
 		for range ticker.C {
 			for _, j := range s.Job {
-				ctx := context.WithValue(context.Background(), logger.TraceIDKey, s.TraceID.New())
-				j.run(ctx)
+				j.run()
 			}
 		}
 	}()
