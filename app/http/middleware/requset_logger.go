@@ -3,12 +3,13 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"io"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/util"
 	"go.uber.org/zap"
-	"io"
-	"time"
 )
 
 // RequestLogger 记录请求日志

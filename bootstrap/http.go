@@ -3,14 +3,15 @@ package bootstrap
 import (
 	"context"
 	"errors"
+	"net/http"
+	"os"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app/http/middleware"
 	"github.com/seakee/go-api/app/http/router"
 	"github.com/sk-pkg/monitor"
 	"go.uber.org/zap"
-	"net/http"
-	"os"
-	"time"
 )
 
 // startHTTPServer 启动HTTP服务

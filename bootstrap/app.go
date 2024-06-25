@@ -2,6 +2,8 @@ package bootstrap
 
 import (
 	"context"
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/app/http/middleware"
@@ -13,7 +15,6 @@ import (
 	"github.com/sk-pkg/mysql"
 	"github.com/sk-pkg/redis"
 	"gorm.io/gorm"
-	"time"
 )
 
 type App struct {

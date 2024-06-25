@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+
 	"gorm.io/gorm"
 )
 

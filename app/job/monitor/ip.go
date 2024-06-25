@@ -3,13 +3,14 @@ package monitor
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/seakee/go-api/app/pkg/schedule"
 	"github.com/sk-pkg/feishu"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
 	"go.uber.org/zap"
-	"strings"
 )
 
 const (

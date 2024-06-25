@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app/repository/auth"
 	"github.com/sk-pkg/i18n"

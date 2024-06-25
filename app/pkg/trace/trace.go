@@ -1,13 +1,14 @@
 package trace
 
 import (
-	"github.com/sk-pkg/util"
 	"log"
 	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/sk-pkg/util"
 )
 
 const (

@@ -1,10 +1,11 @@
 package schedule
 
 import (
+	"time"
+
 	"github.com/seakee/go-api/app/pkg/trace"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
-	"time"
 )
 
 type (

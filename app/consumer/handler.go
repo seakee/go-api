@@ -2,6 +2,7 @@ package consumer
 
 import (
 	"context"
+
 	"github.com/sk-pkg/kafka"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"

@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+
 	"github.com/seakee/go-api/app/consumer"
 	"github.com/sk-pkg/kafka"
 )

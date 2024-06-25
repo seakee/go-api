@@ -1,10 +1,11 @@
 package jwt
 
 import (
+	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/app/model/auth"
-	"time"
 )
 
 type ServerClaims struct {

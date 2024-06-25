@@ -3,13 +3,14 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"time"
+
 	"github.com/seakee/go-api/app/pkg/trace"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
 	"github.com/sk-pkg/util"
 	"go.uber.org/zap"
-	"math/rand"
-	"time"
 )
 
 const (

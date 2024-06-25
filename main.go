@@ -1,12 +1,13 @@
 package main
 
 import (
-	"github.com/seakee/go-api/app"
-	"github.com/seakee/go-api/bootstrap"
 	"log"
 	"os"
 	"os/signal"
 	"runtime"
+
+	"github.com/seakee/go-api/app"
+	"github.com/seakee/go-api/bootstrap"
 )
 
 func main() {
