@@ -1,6 +1,6 @@
 module github.com/seakee/go-api
 
-go 1.21.10
+go 1.22
 
 require (
 	github.com/gin-gonic/gin v1.10.0
@@ -13,7 +13,7 @@ require (
 	github.com/sk-pkg/monitor v0.1.0
 	github.com/sk-pkg/mysql v1.0.1
 	github.com/sk-pkg/redis v1.0.1
-	github.com/sk-pkg/util v1.0.0
+	github.com/sk-pkg/util v1.0.1
 	go.uber.org/zap v1.27.0
 	gorm.io/gorm v1.25.10
 )
