@@ -2,13 +2,16 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 )
 
 const (
-	envKey = "RUN_MODE"
+	envKey  = "RUN_ENV"
+	nameKey = "APP_NAME"
 )
 
 var config *Config
@@ -115,22 +118,25 @@ type (
 func LoadConfig() (*Config, error) {
 	var (
 		runEnv     string
-		confPath   string
+		appName    string
 		rootPath   string
 		cfgContent []byte
 		err        error
 	)
 
 	runEnv = os.Getenv(envKey)
-	rootPath = "./"
 	if runEnv == "" {
 		runEnv = "local"
-		rootPath += "bin/"
 	}
 
-	// 本地环境从本地读取配置
-	confPath = rootPath + "configs/" + runEnv + ".json"
-	cfgContent, err = os.ReadFile(confPath)
+	rootPath, err = os.Getwd()
+	if err != nil {
+		log.Fatalf("无法获取工作目录: %v", err)
+	}
+
+	// 拼接配置文件路径
+	configFilePath := filepath.Join(rootPath, "bin", "configs", fmt.Sprintf("%s.json", runEnv))
+	cfgContent, err = os.ReadFile(configFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -140,10 +146,15 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
+	appName = os.Getenv(nameKey)
+	if appName != "" {
+		config.System.Name = appName
+	}
+
+	config.System.Env = runEnv
 	config.System.RootPath = rootPath
 	config.System.EnvKey = envKey
-	config.System.LangDir = rootPath + "lang"
-	config.System.Env = runEnv
+	config.System.LangDir = filepath.Join(rootPath, "bin", "lang")
 
 	checkConfig(config)
 
