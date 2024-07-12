@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/qiniu/qmgo"
+	"github.com/qiniu/qmgo/options"
 	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/app/http/middleware"
 	"github.com/seakee/go-api/app/pkg/trace"
@@ -14,6 +16,7 @@ import (
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/mysql"
 	"github.com/sk-pkg/redis"
+	mgOpt "go.mongodb.org/mongo-driver/mongo/options"
 	"gorm.io/gorm"
 )
 
@@ -23,6 +26,7 @@ type App struct {
 	Redis         map[string]*redis.Manager
 	I18n          *i18n.Manager
 	MysqlDB       map[string]*gorm.DB
+	MongoDB       map[string]*qmgo.Database
 	Middleware    middleware.Middleware
 	KafkaProducer *kafka.Manager
 	KafkaConsumer *kafka.Manager
@@ -32,7 +36,12 @@ type App struct {
 }
 
 func NewApp(config *app.Config) (*App, error) {
-	a := &App{Config: config, MysqlDB: map[string]*gorm.DB{}, Redis: map[string]*redis.Manager{}}
+	a := &App{
+		Config:  config,
+		MysqlDB: map[string]*gorm.DB{},
+		MongoDB: map[string]*qmgo.Database{},
+		Redis:   map[string]*redis.Manager{},
+	}
 
 	a.loadTrace()
 
@@ -166,7 +175,27 @@ func (a *App) loadDB(ctx context.Context) error {
 
 				a.MysqlDB[db.DbName] = d
 			case "mongo":
-				// TODO mongo初始化逻辑
+				maxPoolSize := uint64(db.DbMaxOpenConn)
+				minPoolSize := uint64(db.DbMaxIdleConn)
+				maxConnIdleTime := db.DbMaxLifetime * time.Hour
+
+				opts := options.ClientOptions{ClientOptions: &mgOpt.ClientOptions{MaxConnIdleTime: &maxConnIdleTime}}
+				cli, err := qmgo.NewClient(ctx, &qmgo.Config{
+					Uri:         db.DbHost,
+					MaxPoolSize: &maxPoolSize,
+					MinPoolSize: &minPoolSize,
+					Auth: &qmgo.Credential{
+						AuthMechanism: db.AuthMechanism,
+						AuthSource:    db.DbName,
+						Username:      db.DbUsername,
+						Password:      db.DbPassword,
+					},
+				}, opts)
+				if err != nil {
+					return err
+				}
+
+				a.MongoDB[db.DbName] = cli.Database(db.DbName)
 			}
 		}
 	}

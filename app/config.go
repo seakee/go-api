@@ -61,6 +61,9 @@ type (
 		DbMaxIdleConn int           `json:"db_max_idle_conn,omitempty"` // 空闲连接池中连接的最大数量
 		DbMaxOpenConn int           `json:"db_max_open_conn,omitempty"` // 数据库连接的最大数量
 		DbMaxLifetime time.Duration `json:"db_max_lifetime,omitempty"`  // 连接可复用的最大时间（单位：小时）
+		// 认证机制对（mongodb有效），可选"SCRAM-SHA-256", "SCRAM-SHA-1",
+		// "MONGODB-CR", "PLAIN", "GSSAPI", "MONGODB-X509", "MONGODB-AWS"
+		AuthMechanism string `json:"auth_mechanism"`
 	}
 
 	Cache struct {

@@ -23,6 +23,7 @@ func (a *App) startHTTPServer(ctx context.Context) {
 		Redis:         a.Redis,
 		I18n:          a.I18n,
 		MysqlDB:       a.MysqlDB,
+		MongoDB:       a.MongoDB,
 		Middleware:    a.Middleware,
 		KafkaProducer: a.KafkaProducer,
 	}

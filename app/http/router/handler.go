@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/qiniu/qmgo"
 	"github.com/seakee/go-api/app/http/middleware"
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/kafka"
@@ -15,6 +16,7 @@ type Core struct {
 	Redis         map[string]*redis.Manager
 	I18n          *i18n.Manager
 	MysqlDB       map[string]*gorm.DB
+	MongoDB       map[string]*qmgo.Database
 	Middleware    middleware.Middleware
 	KafkaProducer *kafka.Manager
 }
