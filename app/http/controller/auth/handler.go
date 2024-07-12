@@ -3,12 +3,13 @@ package auth
 import (
 	"context"
 
+	"gorm.io/gorm"
+
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app/repository/auth"
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
-	"gorm.io/gorm"
 )
 
 type (

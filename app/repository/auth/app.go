@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"context"
+
 	"github.com/seakee/go-api/app/model/auth"
 	"github.com/sk-pkg/redis"
 	"gorm.io/gorm"
@@ -8,9 +10,9 @@ import (
 
 type (
 	Repo interface {
-		GetApp(*auth.App) (*auth.App, error)
-		Create(*auth.App) (uint, error)
-		ExistAppByName(string) (bool, error)
+		GetApp(ctx context.Context, app *auth.App) (*auth.App, error)
+		Create(ctx context.Context, app *auth.App) (uint, error)
+		ExistAppByName(ctx context.Context, name string) (bool, error)
 	}
 
 	repo struct {
@@ -19,9 +21,9 @@ type (
 	}
 )
 
-func (r repo) ExistAppByName(name string) (exist bool, err error) {
+func (r repo) ExistAppByName(ctx context.Context, name string) (exist bool, err error) {
 	app := &auth.App{AppName: name}
-	a, err := app.First(r.db)
+	a, err := app.First(ctx, r.db)
 	if a != nil {
 		exist = true
 	}
@@ -29,12 +31,12 @@ func (r repo) ExistAppByName(name string) (exist bool, err error) {
 	return
 }
 
-func (r repo) Create(app *auth.App) (uint, error) {
-	return app.Create(r.db)
+func (r repo) Create(ctx context.Context, app *auth.App) (uint, error) {
+	return app.Create(ctx, r.db)
 }
 
-func (r repo) GetApp(app *auth.App) (*auth.App, error) {
-	return app.First(r.db)
+func (r repo) GetApp(ctx context.Context, app *auth.App) (*auth.App, error) {
+	return app.First(ctx, r.db)
 }
 
 func NewAppRepo(db *gorm.DB, redis *redis.Manager) Repo {

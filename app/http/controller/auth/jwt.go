@@ -23,9 +23,11 @@ func (h handler) GetToken() gin.HandlerFunc {
 		appSecret := c.PostForm("app_secret")
 		data = make(gin.H)
 
+		ctx := h.ctx(c)
+
 		errCode = e.InvalidParams
 		if appID != "" && appSecret != "" {
-			app, err = h.repo.GetApp(&auth.App{AppID: appID, AppSecret: appSecret, Status: 1})
+			app, err = h.repo.GetApp(ctx, &auth.App{AppID: appID, AppSecret: appSecret, Status: 1})
 			errCode = e.ServerAppNotFound
 			if err == nil {
 				token, err = jwt.GenerateAppToken(app, appTokenExpireTime)

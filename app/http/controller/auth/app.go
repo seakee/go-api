@@ -29,8 +29,10 @@ func (h handler) Create() gin.HandlerFunc {
 
 		errCode := e.InvalidParams
 
+		ctx := h.ctx(c)
+
 		if err = c.ShouldBindJSON(&params); err == nil {
-			exists, err = h.repo.ExistAppByName(params.AppName)
+			exists, err = h.repo.ExistAppByName(ctx, params.AppName)
 			errCode = e.ServerAppAlreadyExists
 			if !exists {
 				app := &auth.App{
@@ -42,7 +44,7 @@ func (h handler) Create() gin.HandlerFunc {
 					Status:      1,
 				}
 
-				_, err = h.repo.Create(app)
+				_, err = h.repo.Create(ctx, app)
 				errCode = e.BUSY
 				if err == nil {
 					errCode = e.SUCCESS

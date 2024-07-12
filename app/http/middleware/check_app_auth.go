@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/seakee/go-api/app/pkg/e"
@@ -32,8 +34,8 @@ func checkByToken(c *gin.Context) (errCode int, err error) {
 
 		serverClaims, err = apiJWT.ParseAppAuth(token)
 		if err != nil {
-			switch err {
-			case jwt.ErrTokenExpired:
+			switch {
+			case errors.Is(err, jwt.ErrTokenExpired):
 				errCode = e.ServerAuthorizationExpired
 			default:
 				errCode = e.ServerUnauthorized
