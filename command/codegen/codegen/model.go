@@ -47,11 +47,11 @@ func NewModel() *Model {
 // getGoType maps SQL types to Go types and returns the Go type and any required import.
 //
 // Parameters:
-// - sqlType: A string representing the SQL type.
+//   - sqlType: A string representing the SQL type.
 //
 // Returns:
-// - A string representing the Go type.
-// - A string representing the import path required for the Go type, if any.
+//   - A string representing the Go type.
+//   - A string representing the import path required for the Go type, if any.
 func (m *Model) getGoType(sqlType string) (string, string) {
 	switch {
 	case strings.HasPrefix(sqlType, "int"):
@@ -95,10 +95,10 @@ func (m *Model) getGoType(sqlType string) (string, string) {
 // For each relevant field, it determines the Go type and GORM tag, and adds these to the Model.
 //
 // Parameters:
-// - sql: A string containing the SQL schema.
+//   - sql: A string containing the SQL schema.
 //
 // Returns:
-// - An error if there is an issue parsing the SQL schema, otherwise nil.
+//   - An error if there is an issue parsing the SQL schema, otherwise nil.
 func (m *Model) parseSQL(sql string) error {
 	// Split the SQL schema into lines for easier processing.
 	lines := strings.Split(sql, "\n")
@@ -172,8 +172,8 @@ func (m *Model) parseSQL(sql string) error {
 // and uses a template to generate the Go code for the model.
 //
 // Returns:
-// - A string containing the generated Go code.
-// - An error if there is an issue generating the code.
+//   - A string containing the generated Go code.
+//   - An error if there is an issue generating the code.
 func (m *Model) generateCode() (string, error) {
 	// Determine the package and struct names based on the table name.
 	parts := strings.Split(m.TableName, "_")
@@ -208,11 +208,11 @@ func (m *Model) generateCode() (string, error) {
 // readSQLFile reads the content of the specified SQL file.
 //
 // Parameters:
-// - filePath: A string representing the path to the SQL file.
+//   - filePath: A string representing the path to the SQL file.
 //
 // Returns:
-// - A string containing the content of the SQL file.
-// - An error if there is an issue reading the file.
+//   - A string containing the content of the SQL file.
+//   - An error if there is an issue reading the file.
 func (m *Model) readSQLFile(filePath string) (string, error) {
 	// Check if the file exists.
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -234,12 +234,12 @@ func (m *Model) readSQLFile(filePath string) (string, error) {
 // the generated code to the specified output path.
 //
 // Parameters:
-// - force: A boolean indicating whether to overwrite existing files.
-// - outputPath: A string representing the output path for the file.
-// - content: A string containing the generated code to be written.
+//   - force: A boolean indicating whether to overwrite existing files.
+//   - outputPath: A string representing the output path for the file.
+//   - content: A string containing the generated code to be written.
 //
 // Returns:
-// - An error if there is an issue writing the file.
+//   - An error if there is an issue writing the file.
 func (m *Model) WriteModelFile(force bool, outputPath, content string) error {
 	// Use the default output path if none is provided.
 	if outputPath == "" {
@@ -287,12 +287,12 @@ func (m *Model) WriteModelFile(force bool, outputPath, content string) error {
 // formats the code, and writes the formatted code to the output file.
 //
 // Parameters:
-// - force: A boolean indicating whether to overwrite existing files.
-// - sqlPath: A string representing the path to the SQL schema file.
-// - outputPath: A string representing the output path for the generated code.
+//   - force: A boolean indicating whether to overwrite existing files.
+//   - sqlPath: A string representing the path to the SQL schema file.
+//   - outputPath: A string representing the output path for the generated code.
 //
 // Returns:
-// - An error if there is an issue during the generation process.
+//   - An error if there is an issue during the generation process.
 func (m *Model) Generate(force bool, sqlPath, outputPath string) error {
 	log.Printf("-------codegen-------\n")
 	log.Printf("Starting to read %s\n", sqlPath)
@@ -345,11 +345,11 @@ func (m *Model) Generate(force bool, sqlPath, outputPath string) error {
 // formatGoCode formats the generated Go code using 'gofmt'.
 //
 // Parameters:
-// - code: A string containing the generated Go code.
+//   - code: A string containing the generated Go code.
 //
 // Returns:
-// - A string containing the formatted Go code.
-// - An error if there is an issue formatting the code.
+//   - A string containing the formatted Go code.
+//   - An error if there is an issue formatting the code.
 func (m *Model) formatGoCode(code string) (string, error) {
 	// Execute the gofmt command to format the code.
 	cmd := exec.Command("gofmt")
@@ -398,12 +398,12 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) TableName() string {
 // First retrieves the first {{.StructNameLower}} matching the criteria from the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
 //
 // Returns:
-// - *{{.StructName}}: pointer to the retrieved {{.StructNameLower}}, or nil if not found.
-// - error: error if the query fails, otherwise nil.
+// 	- *{{.StructName}}: pointer to the retrieved {{.StructNameLower}}, or nil if not found.
+// 	- error: error if the query fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) First(ctx context.Context, db *gorm.DB) (*{{.StructName}}, error) {
 	var {{.StructNameLower}} {{.StructName}}
 
@@ -423,12 +423,12 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) First(ctx context.Context, db
 // Last retrieves the last {{.StructNameLower}} matching the criteria from the database, ordered by ID in descending order.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
 //
 // Returns:
-// - *{{.StructName}}: pointer to the retrieved {{.StructNameLower}}, or nil if not found.
-// - error: error if the query fails, otherwise nil.
+// 	- *{{.StructName}}: pointer to the retrieved {{.StructNameLower}}, or nil if not found.
+// 	- error: error if the query fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db *gorm.DB) (*{{.StructName}}, error) {
 	var {{.StructNameLower}} {{.StructName}}
 
@@ -448,12 +448,12 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 // Create inserts a new {{.StructNameLower}} into the database and returns the ID of the created {{.StructName}}.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
 //
 // Returns:
-// - uint: ID of the created {{.StructNameLower}}.
-// - error: error if the insert operation fails, otherwise nil.
+// 	- uint: ID of the created {{.StructNameLower}}.
+// 	- error: error if the insert operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, db *gorm.DB) (uint, error) {
 	// Perform the database insert operation with context.
 	if err := db.WithContext(ctx).Create({{.StructNameFirstLetter}}).Error; err != nil {
@@ -466,11 +466,11 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, d
 // Delete removes the {{.StructNameLower}} from the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
 //
 // Returns:
-// - error: error if the delete operation fails, otherwise nil.
+// 	- error: error if the delete operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Delete(ctx context.Context, db *gorm.DB) error {
 	// Perform the database delete operation with context.
 	return db.WithContext(ctx).Delete({{.StructNameFirstLetter}}).Error
@@ -479,12 +479,12 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Delete(ctx context.Context, d
 // Updates applies the specified updates to the {{.StructNameLower}} in the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - updates: map[string]interface{} containing the updates to apply.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
+// 	- updates: map[string]interface{} containing the updates to apply.
 //
 // Returns:
-// - error: error if the update operation fails, otherwise nil.
+// 	- error: error if the update operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Updates(ctx context.Context, db *gorm.DB, updates map[string]interface{}) error {
 	// Perform the database update operation with context.
 	return db.WithContext(ctx).Model({{.StructNameFirstLetter}}).Updates(updates).Error
@@ -493,12 +493,12 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Updates(ctx context.Context, 
 // List retrieves all {{.StructNameLower}}s matching the criteria from the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
 //
 // Returns:
-// - []{{.StructName}}: slice of retrieved {{.StructNameLower}}s.
-// - error: error if the query fails, otherwise nil.
+// 	- []{{.StructName}}: slice of retrieved {{.StructNameLower}}s.
+// 	- error: error if the query fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) List(ctx context.Context, db *gorm.DB) ([]{{.StructName}}, error) {
 	var {{.StructNameLower}}s []{{.StructName}}
 	
@@ -513,14 +513,14 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) List(ctx context.Context, db 
 // ListByArgs retrieves {{.StructNameLower}}s matching the specified query and arguments from the database, ordered by ID in descending order.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - query: SQL query string.
-// - args: variadic arguments for the SQL query.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
+// 	- query: SQL query string.
+// 	- args: variadic arguments for the SQL query.
 //
 // Returns:
-// - []{{.StructName}}: slice of retrieved {{.StructNameLower}}s.
-// - error: error if the query fails, otherwise nil.
+// 	- []{{.StructName}}: slice of retrieved {{.StructNameLower}}s.
+// 	- error: error if the query fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) ListByArgs(ctx context.Context, db *gorm.DB, query interface{}, args ...interface{}) ([]{{.StructName}}, error) {
 	var {{.StructNameLower}}s []{{.StructName}}
 
@@ -535,14 +535,14 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) ListByArgs(ctx context.Contex
 // CountByArgs counts the number of {{.StructNameLower}}s matching the specified query and arguments in the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - query: SQL query string.
-// - args: variadic arguments for the SQL query.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
+// 	- query: SQL query string.
+// 	- args: variadic arguments for the SQL query.
 //
 // Returns:
-// - int64: count of matching {{.StructNameLower}}s.
-// - error: error if the count operation fails, otherwise nil.
+// 	- int64: count of matching {{.StructNameLower}}s.
+// 	- error: error if the count operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) CountByArgs(ctx context.Context, db *gorm.DB, query interface{}, args ...interface{}) (int64, error) {
 	var count int64
 
@@ -557,12 +557,12 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) CountByArgs(ctx context.Conte
 // Count counts the number of {{.StructNameLower}}s matching the criteria in the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
 //
 // Returns:
-// - int64: count of matching {{.StructNameLower}}s.
-// - error: error if the count operation fails, otherwise nil.
+// 	- int64: count of matching {{.StructNameLower}}s.
+// 	- error: error if the count operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Count(ctx context.Context, db *gorm.DB) (int64, error) {
 	var count int64
 
@@ -577,12 +577,12 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Count(ctx context.Context, db
 // BatchInsert inserts multiple {{.StructNameLower}}s into the database in a single batch operation.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - {{.StructNameLower}}s: slice of {{.StructName}} instances to be inserted.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
+// 	- {{.StructNameLower}}s: slice of {{.StructName}} instances to be inserted.
 //
 // Returns:
-// - error: error if the batch insert operation fails, otherwise nil.
+// 	- error: error if the batch insert operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) BatchInsert(ctx context.Context, db *gorm.DB, {{.StructNameLower}}s []{{.StructName}}) error {
 	// Perform the database batch insert operation with context.
 	return db.WithContext(ctx).Create(&{{.StructNameLower}}s).Error
@@ -591,14 +591,14 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) BatchInsert(ctx context.Conte
 // FindWithPagination retrieves {{.StructNameLower}}s matching the criteria from the database with pagination support.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - page: page number for pagination (1-based).
-// - size: number of {{.StructNameLower}}s per page.
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
+// 	- page: page number for pagination (1-based).
+// 	- size: number of {{.StructNameLower}}s per page.
 //
 // Returns:
-// - []{{.StructName}}: slice of retrieved {{.StructNameLower}}s.
-// - error: error if the query fails, otherwise nil.
+// 	- []{{.StructName}}: slice of retrieved {{.StructNameLower}}s.
+// 	- error: error if the query fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) FindWithPagination(ctx context.Context, db *gorm.DB, page, size int) ([]{{.StructName}}, error) {
 	var {{.StructNameLower}}s []{{.StructName}}
 
@@ -614,13 +614,13 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) FindWithPagination(ctx contex
 // FindWithSort retrieves {{.StructNameLower}}s matching the criteria from the database with sorting support.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - sort: sorting criteria (e.g., "id desc").
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
+// 	- sort: sorting criteria (e.g., "id desc").
 //
 // Returns:
-// - []{{.StructName}}: slice of retrieved {{.StructNameLower}}s.
-// - error: error if the query fails, otherwise nil.
+// 	- []{{.StructName}}: slice of retrieved {{.StructNameLower}}s.
+// 	- error: error if the query fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) FindWithSort(ctx context.Context, db *gorm.DB, sort string) ([]{{.StructName}}, error) {
 	var {{.StructNameLower}}s []{{.StructName}}
 

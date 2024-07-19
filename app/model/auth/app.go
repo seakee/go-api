@@ -31,12 +31,12 @@ func (a *App) TableName() string {
 // First retrieves the first app matching the criteria from the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
 //
 // Returns:
-// - *App: pointer to the retrieved app, or nil if not found.
-// - error: error if the query fails, otherwise nil.
+//   - *App: pointer to the retrieved app, or nil if not found.
+//   - error: error if the query fails, otherwise nil.
 func (a *App) First(ctx context.Context, db *gorm.DB) (*App, error) {
 	var app App
 
@@ -56,12 +56,12 @@ func (a *App) First(ctx context.Context, db *gorm.DB) (*App, error) {
 // Last retrieves the last app matching the criteria from the database, ordered by ID in descending order.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
 //
 // Returns:
-// - *App: pointer to the retrieved app, or nil if not found.
-// - error: error if the query fails, otherwise nil.
+//   - *App: pointer to the retrieved app, or nil if not found.
+//   - error: error if the query fails, otherwise nil.
 func (a *App) Last(ctx context.Context, db *gorm.DB) (*App, error) {
 	var app App
 
@@ -81,12 +81,12 @@ func (a *App) Last(ctx context.Context, db *gorm.DB) (*App, error) {
 // Create inserts a new app into the database and returns the ID of the created App.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
 //
 // Returns:
-// - uint: ID of the created app.
-// - error: error if the insert operation fails, otherwise nil.
+//   - uint: ID of the created app.
+//   - error: error if the insert operation fails, otherwise nil.
 func (a *App) Create(ctx context.Context, db *gorm.DB) (uint, error) {
 	// Perform the database insert operation with context.
 	if err := db.WithContext(ctx).Create(a).Error; err != nil {
@@ -99,11 +99,11 @@ func (a *App) Create(ctx context.Context, db *gorm.DB) (uint, error) {
 // Delete removes the app from the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
 //
 // Returns:
-// - error: error if the delete operation fails, otherwise nil.
+//   - error: error if the delete operation fails, otherwise nil.
 func (a *App) Delete(ctx context.Context, db *gorm.DB) error {
 	// Perform the database delete operation with context.
 	return db.WithContext(ctx).Delete(a).Error
@@ -112,12 +112,12 @@ func (a *App) Delete(ctx context.Context, db *gorm.DB) error {
 // Updates applies the specified updates to the app in the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - updates: map[string]interface{} containing the updates to apply.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
+//   - updates: map[string]interface{} containing the updates to apply.
 //
 // Returns:
-// - error: error if the update operation fails, otherwise nil.
+//   - error: error if the update operation fails, otherwise nil.
 func (a *App) Updates(ctx context.Context, db *gorm.DB, updates map[string]interface{}) error {
 	// Perform the database update operation with context.
 	return db.WithContext(ctx).Model(a).Updates(updates).Error
@@ -126,12 +126,12 @@ func (a *App) Updates(ctx context.Context, db *gorm.DB, updates map[string]inter
 // List retrieves all apps matching the criteria from the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
 //
 // Returns:
-// - []App: slice of retrieved apps.
-// - error: error if the query fails, otherwise nil.
+//   - []App: slice of retrieved apps.
+//   - error: error if the query fails, otherwise nil.
 func (a *App) List(ctx context.Context, db *gorm.DB) ([]App, error) {
 	var apps []App
 
@@ -146,14 +146,14 @@ func (a *App) List(ctx context.Context, db *gorm.DB) ([]App, error) {
 // ListByArgs retrieves apps matching the specified query and arguments from the database, ordered by ID in descending order.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - query: SQL query string.
-// - args: variadic arguments for the SQL query.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
+//   - query: SQL query string.
+//   - args: variadic arguments for the SQL query.
 //
 // Returns:
-// - []App: slice of retrieved apps.
-// - error: error if the query fails, otherwise nil.
+//   - []App: slice of retrieved apps.
+//   - error: error if the query fails, otherwise nil.
 func (a *App) ListByArgs(ctx context.Context, db *gorm.DB, query interface{}, args ...interface{}) ([]App, error) {
 	var apps []App
 
@@ -168,14 +168,14 @@ func (a *App) ListByArgs(ctx context.Context, db *gorm.DB, query interface{}, ar
 // CountByArgs counts the number of apps matching the specified query and arguments in the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - query: SQL query string.
-// - args: variadic arguments for the SQL query.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
+//   - query: SQL query string.
+//   - args: variadic arguments for the SQL query.
 //
 // Returns:
-// - int64: count of matching apps.
-// - error: error if the count operation fails, otherwise nil.
+//   - int64: count of matching apps.
+//   - error: error if the count operation fails, otherwise nil.
 func (a *App) CountByArgs(ctx context.Context, db *gorm.DB, query interface{}, args ...interface{}) (int64, error) {
 	var count int64
 
@@ -190,12 +190,12 @@ func (a *App) CountByArgs(ctx context.Context, db *gorm.DB, query interface{}, a
 // Count counts the number of apps matching the criteria in the database.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
 //
 // Returns:
-// - int64: count of matching apps.
-// - error: error if the count operation fails, otherwise nil.
+//   - int64: count of matching apps.
+//   - error: error if the count operation fails, otherwise nil.
 func (a *App) Count(ctx context.Context, db *gorm.DB) (int64, error) {
 	var count int64
 
@@ -210,12 +210,12 @@ func (a *App) Count(ctx context.Context, db *gorm.DB) (int64, error) {
 // BatchInsert inserts multiple apps into the database in a single batch operation.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - apps: slice of App instances to be inserted.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
+//   - apps: slice of App instances to be inserted.
 //
 // Returns:
-// - error: error if the batch insert operation fails, otherwise nil.
+//   - error: error if the batch insert operation fails, otherwise nil.
 func (a *App) BatchInsert(ctx context.Context, db *gorm.DB, apps []App) error {
 	// Perform the database batch insert operation with context.
 	return db.WithContext(ctx).Create(&apps).Error
@@ -224,14 +224,14 @@ func (a *App) BatchInsert(ctx context.Context, db *gorm.DB, apps []App) error {
 // FindWithPagination retrieves apps matching the criteria from the database with pagination support.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - page: page number for pagination (1-based).
-// - size: number of apps per page.
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
+//   - page: page number for pagination (1-based).
+//   - size: number of apps per page.
 //
 // Returns:
-// - []App: slice of retrieved apps.
-// - error: error if the query fails, otherwise nil.
+//   - []App: slice of retrieved apps.
+//   - error: error if the query fails, otherwise nil.
 func (a *App) FindWithPagination(ctx context.Context, db *gorm.DB, page, size int) ([]App, error) {
 	var apps []App
 
@@ -247,13 +247,13 @@ func (a *App) FindWithPagination(ctx context.Context, db *gorm.DB, page, size in
 // FindWithSort retrieves apps matching the criteria from the database with sorting support.
 //
 // Parameters:
-// - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// - db: *gorm.DB database connection.
-// - sort: sorting criteria (e.g., "id desc").
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - db: *gorm.DB database connection.
+//   - sort: sorting criteria (e.g., "id desc").
 //
 // Returns:
-// - []App: slice of retrieved apps.
-// - error: error if the query fails, otherwise nil.
+//   - []App: slice of retrieved apps.
+//   - error: error if the query fails, otherwise nil.
 func (a *App) FindWithSort(ctx context.Context, db *gorm.DB, sort string) ([]App, error) {
 	var apps []App
 
