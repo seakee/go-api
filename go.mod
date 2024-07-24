@@ -8,18 +8,16 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/iancoleman/strcase v0.3.0
 	github.com/qiniu/qmgo v1.1.8
-	github.com/shopspring/decimal v1.4.0
-	github.com/sk-pkg/feishu v0.1.9
+	github.com/sk-pkg/feishu v0.1.10
 	github.com/sk-pkg/i18n v1.2.0
 	github.com/sk-pkg/kafka v1.0.1
 	github.com/sk-pkg/logger v1.1.1
 	github.com/sk-pkg/monitor v0.1.0
 	github.com/sk-pkg/mysql v1.0.1
-	github.com/sk-pkg/redis v1.0.1
+	github.com/sk-pkg/redis v1.1.0
 	github.com/sk-pkg/util v1.0.1
 	go.mongodb.org/mongo-driver v1.11.6
 	go.uber.org/zap v1.27.0
-	gorm.io/datatypes v1.2.1
 	gorm.io/gorm v1.25.10
 )
 
@@ -42,7 +40,7 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
-	github.com/gomodule/redigo v1.8.9 // indirect
+	github.com/gomodule/redigo v1.9.2 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
