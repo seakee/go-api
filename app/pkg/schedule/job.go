@@ -17,56 +17,76 @@ import (
 	"go.uber.org/zap"
 )
 
+// Constants for job run types and default server lock TTL
 const (
 	DailyRunType      = "daily"
 	PerSecondsRunType = "seconds"
 	PerMinuitRunType  = "minuit"
 	PerHourRunType    = "hour"
 
-	defaultServerLockTTL = 600 // 默认单服务任务锁时间（10分钟）
+	defaultServerLockTTL = 600 // Default single-server task lock time (10 minutes)
 )
 
-type (
-	Job struct {
-		Name                  string          // 任务实例名
-		Logger                *logger.Manager // 日志
-		Redis                 *redis.Manager  // Redis
-		Handler               HandlerFunc     // 执行器
-		EnableMultipleServers bool            // 允许多节点执行
-		EnableOverlapping     bool            // 允许即使之前的任务实例还在执行，调度内的任务也会执行
-		RunTime               *RunTime        // 任务实例运行时参数
-		TraceID               *trace.ID
-	}
+// Job represents a scheduled task with its properties and execution settings.
+type Job struct {
+	Name                  string          // Name of the job instance
+	Logger                *logger.Manager // Logger for the job
+	Redis                 *redis.Manager  // Redis client for job operations
+	Handler               HandlerFunc     // Function to be executed
+	EnableMultipleServers bool            // Allow execution on multiple nodes
+	EnableOverlapping     bool            // Allow job to run even if previous instance is still running
+	RunTime               *RunTime        // Runtime parameters for the job
+	TraceID               *trace.ID       // TraceID for job execution tracking
+}
 
-	HandlerFunc interface {
-		Exec(ctx context.Context)
-		Error() <-chan error
-		Done() <-chan struct{}
-	}
+// HandlerFunc interface defines the methods that a job handler must implement.
+type HandlerFunc interface {
+	Exec(ctx context.Context)
+	Error() <-chan error
+	Done() <-chan struct{}
+}
 
-	RunTime struct {
-		Type          string        // 调度时间类型
-		Time          interface{}   // 执行时间（时间点、执行间隔时长）
-		Locked        bool          // EnableOverlapping 值为 false 时任务执行锁，保证单节点有且只有一个任务在执行
-		PerTypeLocked bool          // 间隔固定时长类型任务锁
-		Done          chan struct{} // 执行结束
-		RandomDelay   *RandomDelay  // 随机延迟执行时间
-	}
+// RunTime contains the runtime parameters for a job.
+type RunTime struct {
+	Type          string        // Type of schedule (daily, per second, per minute, per hour)
+	Time          interface{}   // Execution time or interval
+	Locked        bool          // Execution lock for non-overlapping jobs
+	PerTypeLocked bool          // Lock for interval-based job types
+	Done          chan struct{} // Channel to signal job completion
+	RandomDelay   *RandomDelay  // Random delay settings for job execution
+}
 
-	RandomDelay struct {
-		Min int
-		Max int
-	}
-)
+// RandomDelay defines the minimum and maximum random delay for job execution.
+type RandomDelay struct {
+	Min int // Minimum delay in seconds
+	Max int // Maximum delay in seconds
+}
 
-// WithoutOverlapping 避免任务重复
+// WithoutOverlapping sets the job to not allow overlapping executions.
+//
+// Returns:
+//   - *Job: The modified Job instance
+//
+// Example:
+//
+//	job.WithoutOverlapping()
 func (j *Job) WithoutOverlapping() *Job {
 	j.EnableOverlapping = false
 	return j
 }
 
-// RandomDelay 设置随机延迟执行时间区间，单位秒。
-// 当 min 和 max 值都不为 0 且 max > min 时，任务会在[min,max]秒之后执行
+// RandomDelay sets a random delay range for job execution.
+//
+// Parameters:
+//   - min: Minimum delay in seconds
+//   - max: Maximum delay in seconds
+//
+// Returns:
+//   - *Job: The modified Job instance
+//
+// Example:
+//
+//	job.RandomDelay(30, 60)
 func (j *Job) RandomDelay(min, max int) *Job {
 	if max < min {
 		panic("must max > min")
@@ -80,9 +100,17 @@ func (j *Job) RandomDelay(min, max int) *Job {
 	return j
 }
 
-// DailyAt 每天 time 执行一次任务，可设置多个时间点
-// 例子：DailyAt("07:30:00", "12:00:00", "18:00:00")
-// 与其他执行时间互斥，每个任务有且只有一个执行时间
+// DailyAt schedules the job to run at specific times each day.
+//
+// Parameters:
+//   - time: One or more time strings in "HH:MM:SS" format
+//
+// Returns:
+//   - *Job: The modified Job instance
+//
+// Example:
+//
+//	job.DailyAt("07:30:00", "12:00:00", "18:00:00")
 func (j *Job) DailyAt(time ...string) *Job {
 	if j.RunTime.Type == "" {
 		j.RunTime.Type = DailyRunType
@@ -91,8 +119,17 @@ func (j *Job) DailyAt(time ...string) *Job {
 	return j
 }
 
-// PerSeconds 每 seconds 秒执行一次任务
-// 与其他执行时间互斥，每个任务有且只有一个执行时间
+// PerSeconds schedules the job to run every specified number of seconds.
+//
+// Parameters:
+//   - seconds: Interval in seconds
+//
+// Returns:
+//   - *Job: The modified Job instance
+//
+// Example:
+//
+//	job.PerSeconds(30)
 func (j *Job) PerSeconds(seconds int) *Job {
 	if j.RunTime.Type == "" {
 		j.RunTime.Type = PerSecondsRunType
@@ -101,8 +138,17 @@ func (j *Job) PerSeconds(seconds int) *Job {
 	return j
 }
 
-// PerMinuit 每 minuit 分钟执行一次任务
-// 与其他执行时间互斥，每个任务有且只有一个执行时间
+// PerMinuit schedules the job to run every specified number of minutes.
+//
+// Parameters:
+//   - minuit: Interval in minutes
+//
+// Returns:
+//   - *Job: The modified Job instance
+//
+// Example:
+//
+//	job.PerMinuit(15)
 func (j *Job) PerMinuit(minuit int) *Job {
 	if j.RunTime.Type == "" {
 		j.RunTime.Type = PerMinuitRunType
@@ -111,8 +157,17 @@ func (j *Job) PerMinuit(minuit int) *Job {
 	return j
 }
 
-// PerHour 每 hour 小时执行一次任务
-// 与其他执行时间互斥，每个任务有且只有一个执行时间
+// PerHour schedules the job to run every specified number of hours.
+//
+// Parameters:
+//   - hour: Interval in hours
+//
+// Returns:
+//   - *Job: The modified Job instance
+//
+// Example:
+//
+//	job.PerHour(4)
 func (j *Job) PerHour(hour int) *Job {
 	if j.RunTime.Type == "" {
 		j.RunTime.Type = PerHourRunType
@@ -121,19 +176,25 @@ func (j *Job) PerHour(hour int) *Job {
 	return j
 }
 
-// OnOneServer 任务只运行在一台服务器上
-// 需要 Redis 服务支持
+// OnOneServer sets the job to run on only one server in a distributed environment.
+//
+// Returns:
+//   - *Job: The modified Job instance
+//
+// Example:
+//
+//	job.OnOneServer()
 func (j *Job) OnOneServer() *Job {
 	j.EnableMultipleServers = false
 	return j
 }
 
-// runWithRecover 为任务运行添加了recover，以防止panic导致的程序崩溃
+// runWithRecover executes the job handler with panic recovery.
 func (j *Job) runWithRecover() {
 	ctx := context.WithValue(context.Background(), logger.TraceIDKey, j.TraceID.New())
 
 	defer func() {
-		// 如果有panic，记录错误并继续
+		// Recover from panic and log the error
 		if r := recover(); r != nil {
 			j.Logger.Error(ctx, "job has a panic error", zap.Any("error", r))
 		}
@@ -142,13 +203,11 @@ func (j *Job) runWithRecover() {
 	j.handler(ctx)
 }
 
-// run 方法根据不同的运行类型执行任务。
-// 对于每日运行类型，它将在指定的时间点执行任务。
-// 对于每秒、每分钟、每小时运行类型，它将基于定时器定期执行任务。
+// run executes the job based on its schedule type.
 func (j *Job) run() {
 	switch j.RunTime.Type {
 	case DailyRunType:
-		// 遍历每日运行的时间点，若当前时间匹配，则启动任务执行
+		// Check if current time matches any of the scheduled times
 		times := j.RunTime.Time.([]string)
 		for _, t := range times {
 			if time.Now().Format("15:04:05") == t {
@@ -156,7 +215,7 @@ func (j *Job) run() {
 			}
 		}
 	case PerSecondsRunType, PerMinuitRunType, PerHourRunType:
-		// 对于定期运行，确保仅执行一次，避免重复执行
+		// Ensure the job is only started once
 		if j.RunTime.PerTypeLocked {
 			return
 		}
@@ -171,12 +230,13 @@ func (j *Job) run() {
 	}
 }
 
-// handler 方法负责处理任务的执行逻辑。
-// 它首先会检查是否允许任务重叠执行，然后根据是否启用多个服务器执行任务的模式进行加锁处理。
-// 最后，它会异步执行任务并处理可能的错误。
+// handler manages the job execution process, including locking and error handling.
+//
+// Parameters:
+//   - ctx: Context for the job execution
 func (j *Job) handler(ctx context.Context) {
 	if !j.EnableOverlapping {
-		// 任务重叠执行不允许时的加锁逻辑
+		// Prevent overlapping executions
 		if j.RunTime.Locked {
 			return
 		}
@@ -184,7 +244,7 @@ func (j *Job) handler(ctx context.Context) {
 	}
 
 	if !j.EnableMultipleServers {
-		// 单服务器执行逻辑，包括加锁和锁续期
+		// Ensure the job runs on only one server
 		if !j.lock("Server", defaultServerLockTTL, false) {
 			j.RunTime.Locked = false
 			return
@@ -193,12 +253,12 @@ func (j *Job) handler(ctx context.Context) {
 		go j.renewalServerLock(ctx)
 	}
 
-	// 随机休眠
+	// Apply random delay if set
 	j.randomDelay()
 
 	j.Logger.Info(ctx, util.SpliceStr("The scheduled job: ", j.Name, " starts execution."))
 
-	// 错误处理和任务完成后的清理逻辑
+	// Handle job execution and potential errors
 	go func(ctx context.Context) {
 	Exit:
 		for {
@@ -208,7 +268,7 @@ func (j *Job) handler(ctx context.Context) {
 					j.Logger.Error(ctx, fmt.Sprintf("An error occurred while executing the %s.", j.Name), zap.Error(err))
 				}
 			case <-j.Handler.Done():
-				// 任务完成后的清理逻辑
+				// Clean up after job completion
 				if !j.EnableMultipleServers {
 					j.RunTime.Done <- struct{}{}
 				}
@@ -225,7 +285,7 @@ func (j *Job) handler(ctx context.Context) {
 	j.Handler.Exec(ctx)
 }
 
-// randomDelay 在设定的时间区间内随机生成一个时间段（秒），休眠
+// randomDelay applies a random delay within the specified range before job execution.
 func (j *Job) randomDelay() {
 	if j.RunTime.RandomDelay == nil {
 		return
@@ -238,13 +298,19 @@ func (j *Job) randomDelay() {
 	time.Sleep(time.Duration(delay) * time.Second)
 }
 
-// lock 方法用于加锁，如果指定的 renewal 为 true，则为续期操作。
-// 返回值表示加锁（或续期）操作是否成功。
+// lock attempts to acquire or renew a Redis lock for the job.
+//
+// Parameters:
+//   - name: Name of the lock
+//   - ttl: Time-to-live for the lock in seconds
+//   - renewal: Whether this is a lock renewal operation
+//
+// Returns:
+//   - bool: True if the lock was acquired or renewed successfully, false otherwise
 func (j *Job) lock(name string, ttl int, renewal bool) bool {
 	prefix := j.Redis.Prefix
 	key := util.SpliceStr(prefix, "schedule:jobLock:", j.Name, ":", name)
 
-	// 根据是否续期执行不同的 Redis 操作
 	if renewal {
 		_, err := j.Redis.Do("EXPIRE", key, ttl)
 		if err == nil {
@@ -260,7 +326,11 @@ func (j *Job) lock(name string, ttl int, renewal bool) bool {
 	return false
 }
 
-// unLock 方法用于释放指定名称的锁。
+// unLock releases the Redis lock for the job.
+//
+// Parameters:
+//   - ctx: Context for logging
+//   - name: Name of the lock to release
 func (j *Job) unLock(ctx context.Context, name string) {
 	key := util.SpliceStr("schedule:jobLock:", j.Name, ":", name)
 
@@ -270,17 +340,20 @@ func (j *Job) unLock(ctx context.Context, name string) {
 	}
 }
 
-// renewalServerLock 方法用于定期续期服务器锁，确保锁不会过期。
+// renewalServerLock periodically renews the server lock to prevent expiration.
+//
+// Parameters:
+//   - ctx: Context for logging and cancellation
 func (j *Job) renewalServerLock(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 Exit:
 	for {
 		select {
 		case <-ticker.C:
-			// 定期执行锁续期操作
+			// Renew the lock every second
 			j.lock("Server", defaultServerLockTTL, true)
 		case <-j.RunTime.Done:
-			// 任务完成或取消时释放服务器锁
+			// Release the lock when the job is done
 			j.unLock(ctx, "Server")
 			break Exit
 		}

@@ -11,32 +11,48 @@ import (
 	"github.com/sk-pkg/kafka"
 )
 
+// startKafkaConsumer initializes and starts the Kafka consumer based on the application configuration.
+//
+// Parameters:
+//   - ctx: A context.Context for handling cancellation and timeouts.
+//
+// This function checks the Kafka consumer configuration and initializes either an auto-submit
+// or manual-submit consumer based on the settings.
 func (a *App) startKafkaConsumer(ctx context.Context) {
+	// Check if Kafka consumer is enabled in the configuration
 	if a.Config.Kafka.ConsumerEnable {
+		// Create a new consumer.Core with common dependencies
+		core := &consumer.Core{
+			Logger:        a.Logger,
+			Redis:         a.Redis["go-api"],
+			MysqlDB:       a.MysqlDB,
+			KafkaConsumer: a.KafkaConsumer,
+		}
+
 		if a.Config.Kafka.ConsumerAutoSubmit {
-			// 自动提交场景
-			consumer.NewAutoSubmit(ctx, &consumer.Core{
-				Logger:        a.Logger,
-				Redis:         a.Redis["go-api"],
-				MysqlDB:       a.MysqlDB,
-				KafkaConsumer: a.KafkaConsumer,
-			})
+			// Initialize auto-submit consumer
+			consumer.NewAutoSubmit(ctx, core)
 		} else {
-			// 手动提交场景
-			consumer.New(ctx, &consumer.Core{
-				Logger:        a.Logger,
-				Redis:         a.Redis["go-api"],
-				MysqlDB:       a.MysqlDB,
-				KafkaConsumer: a.KafkaConsumer,
-			})
+			// Initialize manual-submit consumer
+			consumer.New(ctx, core)
 		}
 	}
 }
 
-// loadKafka 加载kafka
+// loadKafka initializes Kafka producer and consumer based on the application configuration.
+//
+// Parameters:
+//   - ctx: A context.Context for handling cancellation and timeouts.
+//
+// Returns:
+//   - error: An error if any occurred during the initialization process, nil otherwise.
+//
+// This function sets up both Kafka producer and consumer if they are enabled in the configuration.
+// It uses the kafka package to create new instances with the specified options.
 func (a *App) loadKafka(ctx context.Context) error {
 	var err error
-	// 初始化Producer
+
+	// Initialize Kafka Producer if enabled
 	if a.Config.Kafka.ProducerEnable {
 		a.KafkaProducer, err = kafka.New(
 			kafka.WithClientID(a.Config.Kafka.ClientID),
@@ -52,7 +68,7 @@ func (a *App) loadKafka(ctx context.Context) error {
 		a.Logger.Info(ctx, "Kafka Producer loaded successfully")
 	}
 
-	// 初始化Consumer
+	// Initialize Kafka Consumer if enabled
 	if a.Config.Kafka.ConsumerEnable {
 		a.KafkaConsumer, err = kafka.New(
 			kafka.WithClientID(a.Config.Kafka.ClientID),

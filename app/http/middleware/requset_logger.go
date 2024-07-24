@@ -2,6 +2,7 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
+// Package middleware provides HTTP middleware functions for the application.
 package middleware
 
 import (
@@ -16,43 +17,45 @@ import (
 	"go.uber.org/zap"
 )
 
-// RequestLogger 记录请求日志
+// RequestLogger returns a Gin middleware function that logs details about each HTTP request.
+//
+// This middleware captures request details such as method, URI, status code, latency,
+// client IP, and request body. It logs this information using a structured logger.
+//
+// Returns:
+//   - gin.HandlerFunc: A middleware function for Gin framework.
 func (m middleware) RequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 开始时间
+		// Record start time
 		startTime := time.Now()
 
+		// Read and restore request body
 		buf, _ := io.ReadAll(c.Request.Body)
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(buf))
 
-		// 处理请求
+		// Process the request
 		c.Next()
 
-		// 结束时间
+		// Record end time and calculate latency
 		endTime := time.Now()
-
-		// 执行时间
 		latencyTime := endTime.Sub(startTime)
 
-		// 请求方式
+		// Collect request details
 		reqMethod := c.Request.Method
-
-		// 请求路由
 		reqUri := c.Request.RequestURI
-
-		// 状态码
 		statusCode := c.Writer.Status()
-
-		// 请求IP
 		clientIP := util.GetRealIP(c)
 
+		// Get or generate trace ID
 		traceID, exists := c.Get("trace_id")
 		if !exists {
 			traceID = m.traceID.New()
 		}
 
+		// Create context with trace ID
 		ctx := context.WithValue(context.Background(), logger.TraceIDKey, traceID.(string))
 
+		// Log request details
 		m.logger.Info(ctx,
 			"Request Logs",
 			zap.Int("StatusCode", statusCode),

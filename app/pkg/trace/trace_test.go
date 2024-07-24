@@ -20,8 +20,10 @@ const (
 var curMem uint64
 
 // TestTraceID_New is a function that tests the concurrency safety of the NewTraceID function.
+//
 // It simulates a high concurrency scenario by creating a large number of concurrent goroutines and
 // checks whether the generated TraceIDs remain unique under this scenario.
+//
 // Note: This function can consume significant amounts of memory.
 // Please evaluate your computer's hardware resources before executing.
 func TestTraceID_New(t *testing.T) {

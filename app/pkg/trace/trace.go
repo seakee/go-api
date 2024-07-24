@@ -2,6 +2,9 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
+// Package trace provides functionality for generating unique trace identifiers.
+// It is designed to be used in distributed systems for tracking requests or operations
+// across multiple services or components.
 package trace
 
 import (
@@ -16,24 +19,34 @@ import (
 )
 
 const (
-	initIndex = 10000000 // 初始序列号
-	indexBase = 36       // 序列号的基数
+	initIndex = 10000000 // Initial sequence number
+	indexBase = 36       // Base for sequence number conversion
 )
 
 var (
-	hostnameOnce sync.Once // 仅执行一次获取主机名的操作
-	hostname     string    // 缓存的主机名
+	hostnameOnce sync.Once // Ensures hostname is retrieved only once
+	hostname     string    // Cached hostname
 )
 
-// ID 是用于生成唯一标识符的结构体。
+// ID represents a structure for generating unique identifiers.
+// It uses a combination of hostname, timestamp, and a sequence number
+// to ensure uniqueness across distributed systems.
 type ID struct {
-	index  uint64     // 序列号，通过原子操作访问
-	prefix string     // 包含时间戳和主机名的前缀
-	mu     sync.Mutex // 互斥锁，确保更新前缀时的线程安全
+	index  uint64     // Sequence number, accessed atomically
+	prefix string     // Prefix containing timestamp and hostname
+	mu     sync.Mutex // Mutex to ensure thread-safety when updating the prefix
 }
 
-// NewTraceID 创建并返回一个新的 ID 实例，使用主机名和时间戳。
-// 它在初始化时一次性地检索主机名并缓存它。
+// NewTraceID creates and returns a new ID instance.
+// It initializes the ID with the current hostname and timestamp.
+//
+// Returns:
+//   - *ID: A pointer to the newly created ID instance.
+//
+// Example:
+//
+//	traceID := NewTraceID()
+//	uniqueIdentifier := traceID.New()
 func NewTraceID() *ID {
 	t := &ID{
 		index: initIndex,
@@ -42,33 +55,44 @@ func NewTraceID() *ID {
 	return t
 }
 
-// updatePrefix 用当前时间戳和缓存的主机名组合前缀。
-// 调用此方法时需要外部同步。
+// updatePrefix combines the current timestamp and cached hostname to form the prefix.
+// This method should be called with external synchronization.
 func (t *ID) updatePrefix() {
 	var err error
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	// Retrieve hostname only once
 	hostnameOnce.Do(func() {
 		hostname, err = os.Hostname()
 		if err != nil {
-			log.Printf("获取主机名失败: %v", err)
-			// 如果获取主机名失败，使用默认值
+			log.Printf("Failed to get hostname: %v", err)
+			// Use a default value if hostname retrieval fails
 			hostname = "unknown"
 		}
 	})
 
+	// Construct the prefix using hostname and current timestamp
 	t.prefix = util.SpliceStr(hostname, "-", strconv.FormatInt(time.Now().UnixNano(), indexBase), "-")
 	t.index = initIndex
 }
 
-// New 生成并返回一个新的唯一标识符 ID。
+// New generates and returns a new unique identifier.
+//
+// Returns:
+//   - string: A unique identifier combining the prefix and a sequence number.
+//
+// Example:
+//
+//	traceID := NewTraceID()
+//	id1 := traceID.New() // e.g., "hostname-timestamp-sequence1"
+//	id2 := traceID.New() // e.g., "hostname-timestamp-sequence2"
 func (t *ID) New() string {
-	// 原子递增序列号
+	// Atomically increment the sequence number
 	newIndex := atomic.AddUint64(&t.index, 1)
 
-	// 如果序列号溢出，加锁后再次检查以更新前缀并重置序列号
+	// If the sequence number overflows, update the prefix and reset the sequence
 	if newIndex == 0 {
 		t.mu.Lock()
 		defer t.mu.Unlock()
@@ -77,8 +101,9 @@ func (t *ID) New() string {
 		}
 	}
 
-	// 将序列号转换为基数为 36 的字符串
+	// Convert the sequence number to a base-36 string
 	id := strconv.FormatUint(newIndex, indexBase)
 
+	// Combine the prefix and the sequence number
 	return util.SpliceStr(t.prefix, id)
 }

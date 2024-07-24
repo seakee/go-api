@@ -18,7 +18,13 @@ import (
 	"go.uber.org/zap"
 )
 
-// startHTTPServer 启动HTTP服务
+// startHTTPServer initializes and starts the HTTP server.
+//
+// Parameters:
+//   - ctx: The context for the operation.
+//
+// This function sets up the Gin engine, configures the server,
+// and starts listening for incoming HTTP requests.
 func (a *App) startHTTPServer(ctx context.Context) {
 	gin.SetMode(a.Config.System.RunMode)
 
@@ -46,13 +52,19 @@ func (a *App) startHTTPServer(ctx context.Context) {
 		MaxHeaderBytes: maxHeaderBytes,
 	}
 
-	// 监听HTTP服务
+	// Start listening for HTTP requests
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		a.Logger.Fatal(ctx, "http server startup err", zap.Error(err))
 	}
 }
 
-// loadMux 加载gin引擎
+// loadMux initializes the Gin engine and sets up middleware.
+//
+// Parameters:
+//   - ctx: The context for the operation.
+//
+// This function configures the Gin engine with various middleware
+// and sets up panic monitoring if enabled.
 func (a *App) loadMux(ctx context.Context) {
 	mux := gin.New()
 
@@ -65,14 +77,20 @@ func (a *App) loadMux(ctx context.Context) {
 	mux.Use(a.Middleware.Cors())
 	mux.Use(gin.Recovery())
 
-	a.loadPanicRobot(mux) // panic监控
+	a.loadPanicRobot(mux) // Setup panic monitoring
 
 	a.Mux = mux
 
 	a.Logger.Info(ctx, "Mux loaded successfully")
 }
 
-// loadPanicRobot 加载panic监控机器人
+// loadPanicRobot sets up the panic monitoring robot.
+//
+// Parameters:
+//   - mux: The Gin engine to attach the panic robot middleware to.
+//
+// This function initializes the panic monitoring robot with the
+// configured settings and attaches its middleware to the Gin engine.
 func (a *App) loadPanicRobot(mux *gin.Engine) {
 	panicRobot, err := monitor.NewPanicRobot(
 		monitor.PanicRobotEnable(a.Config.Monitor.PanicRobot.Enable),
@@ -88,7 +106,13 @@ func (a *App) loadPanicRobot(mux *gin.Engine) {
 	}
 }
 
-// loadHTTPMiddlewares 加载HTTP中间件
+// loadHTTPMiddlewares initializes the HTTP middleware.
+//
+// Parameters:
+//   - ctx: The context for the operation.
+//
+// This function sets up the middleware with various components
+// such as logger, i18n, databases, and Redis.
 func (a *App) loadHTTPMiddlewares(ctx context.Context) {
 	a.Middleware = middleware.New(a.Logger, a.I18n, a.MysqlDB, a.Redis, a.TraceID)
 	a.Logger.Info(ctx, "Middlewares loaded successfully")

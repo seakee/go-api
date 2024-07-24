@@ -2,6 +2,7 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
+// Package router handles the routing for the application.
 package router
 
 import (
@@ -15,6 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// Core struct holds all the core dependencies for the application.
 type Core struct {
 	Logger        *logger.Manager
 	Redis         map[string]*redis.Manager
@@ -25,52 +27,71 @@ type Core struct {
 	KafkaProducer *kafka.Manager
 }
 
+// New sets up the main router for the application.
+//
+// Parameters:
+//   - mux: *gin.Engine - The main Gin engine.
+//   - core: *Core - The core application structure containing necessary dependencies.
+//
+// Returns:
+//   - *gin.Engine: The configured Gin engine with all routes set up.
 func New(mux *gin.Engine, core *Core) *gin.Engine {
 	api := mux.Group("go-api")
-	// 内部调用接口
+	// Set up internal API routes
 	internal(api.Group("internal"), core)
-	// 外部调用接口
+	// Set up external API routes
 	external(api.Group("external"), core)
 
 	return mux
 }
 
-// external 外部调用接口
+// external sets up the routes for external API calls.
+//
+// Parameters:
+//   - api: *gin.RouterGroup - The router group for external API routes.
+//   - core: *Core - The core application structure containing necessary dependencies.
 func external(api *gin.RouterGroup, core *Core) {
+	// GET /ping - Health check endpoint
 	api.GET("ping", func(c *gin.Context) {
 		core.I18n.JSON(c, 0, nil, nil)
 	})
 
-	// app接口群组
+	// Set up app-related routes
 	appGroup := api.Group("app")
 	appGroup.GET("ping", func(c *gin.Context) {
 		core.I18n.JSON(c, 0, nil, nil)
 	})
 
-	// 服务接口群组
+	// Set up service-related routes
 	serviceGroup := api.Group("service")
 	serviceGroup.GET("ping", func(c *gin.Context) {
 		core.I18n.JSON(c, 0, nil, nil)
 	})
 }
 
-// internal 内部调用接口
+// internal sets up the routes for internal API calls.
+//
+// Parameters:
+//   - api: *gin.RouterGroup - The router group for internal API routes.
+//   - core: *Core - The core application structure containing necessary dependencies.
 func internal(api *gin.RouterGroup, core *Core) {
+	// GET /ping - Health check endpoint
 	api.GET("ping", func(c *gin.Context) {
 		core.I18n.JSON(c, 0, nil, nil)
 	})
 
-	// 管理平台接口群组
+	// Set up admin-related routes
 	adminGroup := api.Group("admin")
 	adminGroup.GET("ping", func(c *gin.Context) {
 		core.I18n.JSON(c, 0, nil, nil)
 	})
 
-	// 服务接口群组
+	// Set up service-related routes
 	serviceGroup := api.Group("service")
 	serviceGroup.GET("ping", func(c *gin.Context) {
 		core.I18n.JSON(c, 0, nil, nil)
 	})
 
+	// Set up authentication-related routes
 	authGroup(serviceGroup.Group("server/auth"), core)
 }

@@ -2,6 +2,9 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
+// Package bootstrap provides functionality to initialize and start the application.
+// It handles the setup of various components such as logging, databases, caching,
+// message queues, and HTTP servers.
 package bootstrap
 
 import (
@@ -24,6 +27,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// App represents the main application structure, containing all necessary components and configurations.
 type App struct {
 	Config        *app.Config
 	Logger        *logger.Manager
@@ -39,6 +43,14 @@ type App struct {
 	TraceID       *trace.ID
 }
 
+// NewApp creates and initializes a new App instance.
+//
+// Parameters:
+//   - config: A pointer to the application configuration.
+//
+// Returns:
+//   - *App: A pointer to the initialized App instance.
+//   - error: An error if any initialization step fails.
 func NewApp(config *app.Config) (*App, error) {
 	a := &App{
 		Config:  config,
@@ -47,6 +59,7 @@ func NewApp(config *app.Config) (*App, error) {
 		Redis:   map[string]*redis.Manager{},
 	}
 
+	// Initialize components
 	a.loadTrace()
 
 	ctx := context.WithValue(context.Background(), logger.TraceIDKey, a.TraceID.New())
@@ -84,23 +97,30 @@ func NewApp(config *app.Config) (*App, error) {
 	return a, nil
 }
 
-// Start 启动应用
+// Start initiates the application by starting the HTTP server, Kafka consumer, and scheduled tasks.
+// It runs each component in a separate goroutine.
 func (a *App) Start() {
 	ctx := context.WithValue(context.Background(), logger.TraceIDKey, a.TraceID.New())
-	// 启动HTTP服务
+	// Start HTTP server
 	go a.startHTTPServer(ctx)
-	// 启动kafka消费
+	// Start Kafka consumer
 	go a.startKafkaConsumer(ctx)
-	// 启动调度任务
+	// Start scheduled tasks
 	go a.startSchedule(ctx)
 }
 
-// loadTrace 加载 TraceID
+// loadTrace initializes the TraceID component.
 func (a *App) loadTrace() {
 	a.TraceID = trace.NewTraceID()
 }
 
-// loadLogger 加载日志模块
+// loadLogger initializes the logging component.
+//
+// Parameters:
+//   - ctx: The context for the operation.
+//
+// Returns:
+//   - error: An error if the logger initialization fails.
 func (a *App) loadLogger(ctx context.Context) error {
 	var err error
 	a.Logger, err = logger.New(
@@ -116,7 +136,10 @@ func (a *App) loadLogger(ctx context.Context) error {
 	return err
 }
 
-// loadRedis 加载Redis模块
+// loadRedis initializes the Redis caching component.
+//
+// Parameters:
+//   - ctx: The context for the operation.
 func (a *App) loadRedis(ctx context.Context) {
 	for _, cfg := range a.Config.Redis {
 		if cfg.Enable {
@@ -137,7 +160,13 @@ func (a *App) loadRedis(ctx context.Context) {
 	a.Logger.Info(ctx, "Redis loaded successfully")
 }
 
-// loadI18n 加载国际化模块
+// loadI18n initializes the internationalization component.
+//
+// Parameters:
+//   - ctx: The context for the operation.
+//
+// Returns:
+//   - error: An error if the i18n initialization fails.
 func (a *App) loadI18n(ctx context.Context) error {
 	var err error
 	a.I18n, err = i18n.New(
@@ -154,9 +183,14 @@ func (a *App) loadI18n(ctx context.Context) error {
 	return err
 }
 
-// loadDB 加载数据库模块
+// loadDB initializes the database components (MySQL and MongoDB).
+//
+// Parameters:
+//   - ctx: The context for the operation.
+//
+// Returns:
+//   - error: An error if any database initialization fails.
 func (a *App) loadDB(ctx context.Context) error {
-
 	for _, db := range a.Config.Databases {
 		if db.Enable {
 			switch db.DbType {
@@ -209,7 +243,13 @@ func (a *App) loadDB(ctx context.Context) error {
 	return nil
 }
 
-// loadFeishu 加载飞书模块
+// loadFeishu initializes the Feishu component.
+//
+// Parameters:
+//   - ctx: The context for the operation.
+//
+// Returns:
+//   - error: An error if the Feishu initialization fails.
 func (a *App) loadFeishu(ctx context.Context) error {
 	var err error
 

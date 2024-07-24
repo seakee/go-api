@@ -38,12 +38,12 @@ func main() {
 // processSingleSQLFile processes a single SQL file and generates the corresponding code
 //
 // Parameters:
-// - force: whether to force overwrite existing files
-// - name: SQL file name (without .sql extension)
-// - sqlPath: directory where the SQL file is located
-// - modelOutputPath: directory to output the generated model code
-// - repoOutputPath: directory to output the generated repository code
-// - serviceOutputPath: directory to output the generated service code
+//   - force: whether to force overwrite existing files
+//   - name: SQL file name (without .sql extension)
+//   - sqlPath: directory where the SQL file is located
+//   - modelOutputPath: directory to output the generated model code
+//   - repoOutputPath: directory to output the generated repository code
+//   - serviceOutputPath: directory to output the generated service code
 func processSingleSQLFile(force bool, name, sqlPath, modelOutputPath, repoOutputPath, serviceOutputPath string) {
 	// Create a new Model instance
 	m := codegen.NewModel()
@@ -70,11 +70,11 @@ func processSingleSQLFile(force bool, name, sqlPath, modelOutputPath, repoOutput
 // processSQLDirectory processes all SQL files in a directory and generates the corresponding code
 //
 // Parameters:
-// - force: whether to force overwrite existing files
-// - sqlPath: directory where the SQL files are located
-// - modelOutputPath: directory to output the generated model code
-// - repoOutputPath: directory to output the generated repository code
-// - serviceOutputPath: directory to output the generated service code
+//   - force: whether to force overwrite existing files
+//   - sqlPath: directory where the SQL files are located
+//   - modelOutputPath: directory to output the generated model code
+//   - repoOutputPath: directory to output the generated repository code
+//   - serviceOutputPath: directory to output the generated service code
 func processSQLDirectory(force bool, sqlPath, modelOutputPath, repoOutputPath, serviceOutputPath string) {
 	// Walk through all files in the sqlPath directory
 	err := filepath.Walk(sqlPath, func(path string, info os.FileInfo, err error) error {
