@@ -17,14 +17,18 @@ import (
 	"go.uber.org/zap"
 )
 
+// RunType represents the type of job execution.
+type RunType string
+
 // Constants for job run types and default server lock TTL
 const (
-	DailyRunType      = "daily"
-	PerSecondsRunType = "seconds"
-	PerMinuitRunType  = "minuit"
-	PerHourRunType    = "hour"
+	DailyRunType     RunType = "daily"     // Run task daily
+	SecondlyRunType  RunType = "seconds"   // Run task every X seconds
+	MinutelyRunType  RunType = "minute"    // Run task every X minutes
+	HourlyRunType    RunType = "hour"      // Run task every X hours
+	ImmediateRunType RunType = "immediate" // Run task immediately
 
-	defaultServerLockTTL = 600 // Default single-server task lock time (10 minutes)
+	DefaultServerLockTTL = 600 // Default single-server task lock time (10 minutes)
 )
 
 // Job represents a scheduled task with its properties and execution settings.
@@ -48,7 +52,7 @@ type HandlerFunc interface {
 
 // RunTime contains the runtime parameters for a job.
 type RunTime struct {
-	Type          string        // Type of schedule (daily, per second, per minute, per hour)
+	Type          RunType       // Type of schedule (daily, per second, per minute, per hour, immediate)
 	Time          interface{}   // Execution time or interval
 	Locked        bool          // Execution lock for non-overlapping jobs
 	PerTypeLocked bool          // Lock for interval-based job types
@@ -100,6 +104,15 @@ func (j *Job) RandomDelay(min, max int) *Job {
 	return j
 }
 
+func (j *Job) Immediate() *Job {
+	if j.RunTime.Type == "" {
+		j.RunTime.Type = ImmediateRunType
+	}
+
+	j.EnableOverlapping = false
+	return j
+}
+
 // DailyAt schedules the job to run at specific times each day.
 //
 // Parameters:
@@ -132,7 +145,7 @@ func (j *Job) DailyAt(time ...string) *Job {
 //	job.PerSeconds(30)
 func (j *Job) PerSeconds(seconds int) *Job {
 	if j.RunTime.Type == "" {
-		j.RunTime.Type = PerSecondsRunType
+		j.RunTime.Type = SecondlyRunType
 		j.RunTime.Time = time.Duration(seconds) * time.Second
 	}
 	return j
@@ -151,7 +164,7 @@ func (j *Job) PerSeconds(seconds int) *Job {
 //	job.PerMinuit(15)
 func (j *Job) PerMinuit(minuit int) *Job {
 	if j.RunTime.Type == "" {
-		j.RunTime.Type = PerMinuitRunType
+		j.RunTime.Type = MinutelyRunType
 		j.RunTime.Time = time.Duration(minuit) * time.Minute
 	}
 	return j
@@ -170,7 +183,7 @@ func (j *Job) PerMinuit(minuit int) *Job {
 //	job.PerHour(4)
 func (j *Job) PerHour(hour int) *Job {
 	if j.RunTime.Type == "" {
-		j.RunTime.Type = PerHourRunType
+		j.RunTime.Type = HourlyRunType
 		j.RunTime.Time = time.Duration(hour) * time.Hour
 	}
 	return j
@@ -206,6 +219,9 @@ func (j *Job) runWithRecover() {
 // run executes the job based on its schedule type.
 func (j *Job) run() {
 	switch j.RunTime.Type {
+	case ImmediateRunType:
+		// Run the job immediately
+		go j.runWithRecover()
 	case DailyRunType:
 		// Check if current time matches any of the scheduled times
 		times := j.RunTime.Time.([]string)
@@ -214,7 +230,7 @@ func (j *Job) run() {
 				go j.runWithRecover()
 			}
 		}
-	case PerSecondsRunType, PerMinuitRunType, PerHourRunType:
+	case SecondlyRunType, MinutelyRunType, HourlyRunType:
 		// Ensure the job is only started once
 		if j.RunTime.PerTypeLocked {
 			return
@@ -245,7 +261,7 @@ func (j *Job) handler(ctx context.Context) {
 
 	if !j.EnableMultipleServers {
 		// Ensure the job runs on only one server
-		if !j.lock("Server", defaultServerLockTTL, false) {
+		if !j.lock("Server", DefaultServerLockTTL, false) {
 			j.RunTime.Locked = false
 			return
 		}
@@ -351,7 +367,7 @@ Exit:
 		select {
 		case <-ticker.C:
 			// Renew the lock every second
-			j.lock("Server", defaultServerLockTTL, true)
+			j.lock("Server", DefaultServerLockTTL, true)
 		case <-j.RunTime.Done:
 			// Release the lock when the job is done
 			j.unLock(ctx, "Server")
