@@ -9,8 +9,8 @@ package job
 import (
 	"github.com/seakee/go-api/app/job/monitor"
 	"github.com/seakee/go-api/app/pkg/schedule"
-	"github.com/sk-pkg/feishu"
 	"github.com/sk-pkg/logger"
+	"github.com/sk-pkg/notify"
 	"github.com/sk-pkg/redis"
 	"gorm.io/gorm"
 )
@@ -21,12 +21,12 @@ import (
 //   - logger: A pointer to the logger.Manager for logging purposes.
 //   - redis: A map of Redis managers, keyed by their names.
 //   - db: A map of GORM database connections, keyed by their names.
-//   - feishu: A pointer to the Feishu manager for Feishu-related operations.
+//   - notify: A pointer to the Notify manager for Notify-related operations.
 //   - s: A pointer to the schedule.Schedule instance for job scheduling.
 //
 // This function initializes various monitoring jobs and adds them to the scheduler.
 // Currently, it sets up an IP monitor job that runs every 5 minutes without overlapping.
-func Register(logger *logger.Manager, redis map[string]*redis.Manager, db map[string]*gorm.DB, feishu *feishu.Manager, s *schedule.Schedule) {
+func Register(logger *logger.Manager, redis map[string]*redis.Manager, db map[string]*gorm.DB, notify *notify.Manager, s *schedule.Schedule) {
 	// Initialize the IP monitor
 	ipMonitor := monitor.NewIpMonitor(logger, redis["go-api"])
 

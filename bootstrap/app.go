@@ -9,6 +9,7 @@ package bootstrap
 
 import (
 	"context"
+	"github.com/sk-pkg/notify/lark"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,11 +18,11 @@ import (
 	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/app/http/middleware"
 	"github.com/seakee/go-api/app/pkg/trace"
-	"github.com/sk-pkg/feishu"
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/kafka"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/mysql"
+	"github.com/sk-pkg/notify"
 	"github.com/sk-pkg/redis"
 	mgOpt "go.mongodb.org/mongo-driver/mongo/options"
 	"gorm.io/gorm"
@@ -39,7 +40,7 @@ type App struct {
 	KafkaProducer *kafka.Manager
 	KafkaConsumer *kafka.Manager
 	Mux           *gin.Engine
-	Feishu        *feishu.Manager
+	Notify        *notify.Manager
 	TraceID       *trace.ID
 }
 
@@ -74,9 +75,9 @@ func NewApp(config *app.Config) (*App, error) {
 		return nil, err
 	}
 
-	err = a.loadFeishu(ctx)
+	err = a.loadNotify()
 	if err != nil {
-		return nil, err
+		return a, err
 	}
 
 	err = a.loadI18n(ctx)
@@ -251,30 +252,35 @@ func (a *App) loadDB(ctx context.Context) error {
 	return nil
 }
 
-// loadFeishu initializes the Feishu component.
-//
-// Parameters:
-//   - ctx: The context for the operation.
-//
-// Returns:
-//   - error: An error if the Feishu initialization fails.
-func (a *App) loadFeishu(ctx context.Context) error {
-	var err error
-
-	if a.Config.Feishu.Enable {
-		a.Feishu, err = feishu.New(
-			feishu.WithGroupWebhook(a.Config.Feishu.GroupWebhook),
-			feishu.WithAppID(a.Config.Feishu.AppID),
-			feishu.WithAppSecret(a.Config.Feishu.AppSecret),
-			feishu.WithEncryptKey(a.Config.Feishu.EncryptKey),
-			feishu.WithRedis(a.Redis["go-api"]),
-			feishu.WithLog(a.Logger.Zap),
-		)
-
-		if err == nil {
-			a.Logger.Info(ctx, "Feishu loaded successfully")
+// loadNotify initializes the notification component.
+func (a *App) loadNotify() error {
+	larksCount := len(a.Config.Notify.Lark.Larks)
+	larks := make(map[string]lark.Lark, larksCount)
+	if larksCount > 0 {
+		for name, l := range a.Config.Notify.Lark.Larks {
+			larks[name] = lark.Lark{
+				AppType:   l.AppType,
+				AppID:     l.AppID,
+				AppSecret: l.AppSecret,
+			}
 		}
 	}
 
-	return err
+	manager, err := notify.New(
+		notify.OptDefaultChannel(notify.Channel(a.Config.Notify.DefaultChannel)),
+		notify.OptDefaultLevel(notify.Level(a.Config.Notify.DefaultLevel)),
+		notify.OptLarkConfig(lark.Config{
+			Enabled:                a.Config.Notify.Lark.Enable,
+			DefaultSendChannelName: a.Config.Notify.Lark.DefaultSendChannelName,
+			BotWebhooks:            a.Config.Notify.Lark.BotWebhooks,
+			Larks:                  larks,
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	a.Notify = manager
+
+	return nil
 }

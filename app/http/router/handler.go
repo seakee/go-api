@@ -12,6 +12,7 @@ import (
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/kafka"
 	"github.com/sk-pkg/logger"
+	"github.com/sk-pkg/notify"
 	"github.com/sk-pkg/redis"
 	"gorm.io/gorm"
 )
@@ -25,6 +26,7 @@ type Core struct {
 	MongoDB       map[string]*qmgo.Database
 	Middleware    middleware.Middleware
 	KafkaProducer *kafka.Manager
+	Notify        *notify.Manager
 }
 
 // New sets up the main router for the application.

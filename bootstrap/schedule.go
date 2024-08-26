@@ -24,7 +24,7 @@ func (a *App) startSchedule(ctx context.Context) {
 
 	// Register jobs with the scheduler
 	// This function call sets up all the scheduled jobs for the application
-	job.Register(a.Logger, a.Redis, a.MysqlDB, a.Feishu, s)
+	job.Register(a.Logger, a.Redis, a.MysqlDB, a.Notify, s)
 
 	// Start the scheduler
 	// This will begin executing the registered jobs according to their schedules

@@ -32,7 +32,7 @@ type Config struct {
 	Redis     []Redis     `json:"redis"`     // Redis configurations
 	Kafka     Kafka       `json:"kafka"`     // Kafka configuration
 	Monitor   Monitor     `json:"monitor"`   // Monitoring configuration
-	Feishu    Feishu      `json:"feishu"`    // Feishu (Lark) configuration
+	Notify    Notify      `json:"notify"`    // Notify configuration
 }
 
 // LogConfig defines logging configuration options.
@@ -123,13 +123,28 @@ type robotConfig struct {
 	PushUrl string `json:"push_url"` // URL for pushing messages
 }
 
-// Feishu defines Feishu (Lark) configuration options.
-type Feishu struct {
-	Enable       bool   `json:"enable"`        // Feishu integration enable flag
-	GroupWebhook string `json:"group_webhook"` // Feishu group webhook URL
-	AppID        string `json:"app_id"`        // Feishu application ID
-	AppSecret    string `json:"app_secret"`    // Feishu application secret
-	EncryptKey   string `json:"encrypt_key"`   // Encryption key for Feishu messages
+// Notify defines notification configuration options.
+type Notify struct {
+	DefaultChannel string `json:"default_channel"`
+	DefaultLevel   string `json:"default_level"`
+	Lark           Lark   `json:"lark"`
+}
+
+// Lark defines Lark configuration options.
+type Lark struct {
+	Enable                 bool               `json:"enable"`
+	DefaultSendChannelName string             `json:"default_send_channel_name"`
+	ChannelSize            int                `json:"channel_size"`
+	PoolSize               int                `json:"pool_size"`
+	BotWebhooks            map[string]string  `json:"bot_webhooks"`
+	Larks                  map[string]LarkApp `json:"larks"`
+}
+
+// LarkApp defines Lark application configuration options.
+type LarkApp struct {
+	AppType   string `json:"app_type"`
+	AppID     string `json:"app_id"`
+	AppSecret string `json:"app_secret"`
 }
 
 // LoadConfig loads the application configuration from a JSON file.

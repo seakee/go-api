@@ -13,7 +13,6 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/seakee/go-api/app/pkg/schedule"
-	"github.com/sk-pkg/feishu"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
 	"go.uber.org/zap"
@@ -36,7 +35,6 @@ type ipHandler struct {
 	logger *logger.Manager
 	redis  *redis.Manager
 	lastIp string
-	feishu *feishu.Manager
 }
 
 // setLastIp retrieves the last known IP address from Redis and sets it in the handler.

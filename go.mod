@@ -8,12 +8,12 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/iancoleman/strcase v0.3.0
 	github.com/qiniu/qmgo v1.1.8
-	github.com/sk-pkg/feishu v0.1.10
 	github.com/sk-pkg/i18n v1.2.0
 	github.com/sk-pkg/kafka v1.0.1
 	github.com/sk-pkg/logger v1.1.1
 	github.com/sk-pkg/monitor v0.1.0
 	github.com/sk-pkg/mysql v1.0.1
+	github.com/sk-pkg/notify v0.1.1
 	github.com/sk-pkg/redis v1.1.0
 	github.com/sk-pkg/util v1.0.1
 	go.mongodb.org/mongo-driver v1.11.6
@@ -61,6 +61,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/montanaflynn/stats v0.0.0-20171201202039-1bf9dbcd8cbe // indirect
+	github.com/panjf2000/ants/v2 v2.10.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.18 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

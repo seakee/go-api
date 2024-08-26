@@ -36,6 +36,7 @@ func (a *App) startHTTPServer(ctx context.Context) {
 		MongoDB:       a.MongoDB,
 		Middleware:    a.Middleware,
 		KafkaProducer: a.KafkaProducer,
+		Notify:        a.Notify,
 	}
 
 	serverHandler := router.New(a.Mux, core)

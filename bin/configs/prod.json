@@ -89,11 +89,30 @@
       }
     }
   },
-  "feishu" : {
-    "enable": false,
-    "app_id": "app_id",
-    "app_secret": "app_secret",
-    "encrypt_key": "",
-    "group_webhook": "group_webhook"
+  "notify": {
+    "default_channel": "lark",
+    "default_level": "info",
+    "lark": {
+      "enable": false,
+      "default_send_channel_name": "go-api",
+      "channel_size": 0,
+      "pool_size": 0,
+      "bot_webhooks": {
+        "bot_1": "https://open.feishu.cn/open-apis/bot/v2/hook/xxx",
+        "bot_2": "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+      },
+      "larks": {
+        "lark-app": {
+          "app_type": "lark",
+          "app_id": "cli_xxx",
+          "app_secret": "xxx"
+        },
+        "tester": {
+          "app_type": "feishu",
+          "app_id": "cli_xxx",
+          "app_secret": "xxx"
+        }
+      }
+    }
   }
 }
