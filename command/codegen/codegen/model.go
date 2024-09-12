@@ -473,7 +473,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, d
 // 	- error: error if the delete operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Delete(ctx context.Context, db *gorm.DB) error {
 	// Perform the database delete operation with context.
-	return db.WithContext(ctx).Delete({{.StructNameFirstLetter}}).Error
+	return db.WithContext(ctx).Where({{.StructNameFirstLetter}}).Delete({{.StructNameFirstLetter}}).Error
 }
 
 // Updates applies the specified updates to the {{.StructNameLower}} in the database.
