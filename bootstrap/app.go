@@ -220,6 +220,11 @@ func (a *App) loadDB(ctx context.Context) error {
 					return err
 				}
 
+				// if debug mode and not prod, enable gorm debug mode
+				if a.Config.System.DebugMode && a.Config.System.Env != "prod" {
+					d = d.Debug()
+				}
+
 				a.MysqlDB[db.DbName] = d
 			case "mongo":
 				maxPoolSize := uint64(db.DbMaxOpenConn)
