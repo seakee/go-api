@@ -204,6 +204,7 @@ func (a *App) loadDB(ctx context.Context) error {
 		if db.Enable {
 			switch db.DbType {
 			case "mysql":
+				mysqlLogger := mysql.NewLog(a.Logger, mysql.WithIgnoreRecordNotFoundError(true))
 				d, err := mysql.New(mysql.WithConfigs(
 					mysql.Config{
 						User:     db.DbUsername,
@@ -214,6 +215,7 @@ func (a *App) loadDB(ctx context.Context) error {
 					mysql.WithConnMaxLifetime(db.DbMaxLifetime*time.Hour),
 					mysql.WithMaxIdleConn(db.DbMaxIdleConn),
 					mysql.WithMaxOpenConn(db.DbMaxOpenConn),
+					mysql.WithGormConfig(gorm.Config{Logger: mysqlLogger}),
 				)
 
 				if err != nil {
