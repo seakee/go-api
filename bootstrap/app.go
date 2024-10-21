@@ -204,7 +204,7 @@ func (a *App) loadDB(ctx context.Context) error {
 		if db.Enable {
 			switch db.DbType {
 			case "mysql":
-				mysqlLogger := mysql.NewLog(a.Logger, mysql.WithIgnoreRecordNotFoundError(true))
+				mysqlLogger := mysql.NewLog(a.Logger.CallerSkipMode(4))
 				d, err := mysql.New(mysql.WithConfigs(
 					mysql.Config{
 						User:     db.DbUsername,
