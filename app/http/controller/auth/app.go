@@ -43,7 +43,7 @@ func (h handler) Create() gin.HandlerFunc {
 
 		errCode := e.InvalidParams
 
-		ctx := h.ctx(c)
+		ctx := h.Context(c)
 
 		// Bind JSON request to StoreAppReqParams
 		if err = c.ShouldBindJSON(&params); err == nil {
@@ -77,6 +77,6 @@ func (h handler) Create() gin.HandlerFunc {
 		}
 
 		// Send JSON response
-		h.i18n.JSON(c, errCode, data, err)
+		h.I18n.JSON(c, errCode, data, err)
 	}
 }

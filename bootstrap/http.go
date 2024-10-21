@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	appHttp "github.com/seakee/go-api/app/http"
 	"github.com/seakee/go-api/app/http/middleware"
 	"github.com/seakee/go-api/app/http/router"
 	"github.com/sk-pkg/monitor"
@@ -28,7 +29,7 @@ import (
 func (a *App) startHTTPServer(ctx context.Context) {
 	gin.SetMode(a.Config.System.RunMode)
 
-	core := &router.Core{
+	appCtx := &appHttp.Context{
 		Logger:        a.Logger,
 		Redis:         a.Redis,
 		I18n:          a.I18n,
@@ -37,9 +38,10 @@ func (a *App) startHTTPServer(ctx context.Context) {
 		Middleware:    a.Middleware,
 		KafkaProducer: a.KafkaProducer,
 		Notify:        a.Notify,
+		Config:        a.Config,
 	}
 
-	serverHandler := router.New(a.Mux, core)
+	router.Register(a.Mux, appCtx)
 
 	readTimeout := a.Config.System.ReadTimeout * time.Second
 	writeTimeout := a.Config.System.WriteTimeout * time.Second
@@ -47,7 +49,7 @@ func (a *App) startHTTPServer(ctx context.Context) {
 
 	server := &http.Server{
 		Addr:           a.Config.System.HTTPPort,
-		Handler:        serverHandler,
+		Handler:        a.Mux,
 		ReadTimeout:    readTimeout,
 		WriteTimeout:   writeTimeout,
 		MaxHeaderBytes: maxHeaderBytes,

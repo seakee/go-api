@@ -39,12 +39,10 @@ func (h handler) GetToken() gin.HandlerFunc {
 		appSecret := c.PostForm("app_secret")
 		data = make(gin.H)
 
-		ctx := h.ctx(c)
-
 		errCode = e.InvalidParams
 		if appID != "" && appSecret != "" {
 			// Attempt to retrieve the app from the database
-			app, err = h.repo.GetApp(ctx, &auth.App{AppID: appID, AppSecret: appSecret, Status: 1})
+			app, err = h.repo.GetApp(h.Context(c), &auth.App{AppID: appID, AppSecret: appSecret, Status: 1})
 			errCode = e.ServerAppNotFound
 			if err == nil {
 				// Generate a JWT token for the app
@@ -59,6 +57,6 @@ func (h handler) GetToken() gin.HandlerFunc {
 		}
 
 		// Respond with the result
-		h.i18n.JSON(c, errCode, data, err)
+		h.I18n.JSON(c, errCode, data, err)
 	}
 }
