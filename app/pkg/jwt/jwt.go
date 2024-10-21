@@ -7,10 +7,10 @@
 package jwt
 
 import (
+	"github.com/seakee/go-api/app/config"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/app/model/auth"
 )
 
@@ -60,7 +60,7 @@ func GenerateAppToken(App *auth.App, expireTime time.Duration) (token string, er
 	tokenClaims := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	// Sign and get the complete encoded token as a string
-	jwtSecret := []byte(app.GetConfig().System.JwtSecret)
+	jwtSecret := []byte(config.Get().System.JwtSecret)
 	return tokenClaims.SignedString(jwtSecret)
 }
 
@@ -82,7 +82,7 @@ func GenerateAppToken(App *auth.App, expireTime time.Duration) (token string, er
 //	}
 //	fmt.Printf("App ID: %s\n", claims.AppID)
 func ParseAppAuth(token string) (*ServerClaims, error) {
-	jwtSecret := []byte(app.GetConfig().System.JwtSecret)
+	jwtSecret := []byte(config.Get().System.JwtSecret)
 
 	// Parse the token
 	tokenClaims, err := jwt.ParseWithClaims(token, &ServerClaims{}, func(token *jwt.Token) (interface{}, error) {

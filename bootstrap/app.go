@@ -9,13 +9,13 @@ package bootstrap
 
 import (
 	"context"
+	"github.com/seakee/go-api/app/config"
 	"github.com/sk-pkg/notify/lark"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/qiniu/qmgo"
 	"github.com/qiniu/qmgo/options"
-	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/app/http/middleware"
 	"github.com/seakee/go-api/app/pkg/trace"
 	"github.com/sk-pkg/i18n"
@@ -30,7 +30,7 @@ import (
 
 // App represents the main application structure, containing all necessary components and configurations.
 type App struct {
-	Config        *app.Config
+	Config        *config.Config
 	Logger        *logger.Manager
 	Redis         map[string]*redis.Manager
 	I18n          *i18n.Manager
@@ -52,7 +52,7 @@ type App struct {
 // Returns:
 //   - *App: A pointer to the initialized App instance.
 //   - error: An error if any initialization step fails.
-func NewApp(config *app.Config) (*App, error) {
+func NewApp(config *config.Config) (*App, error) {
 	a := &App{
 		Config:  config,
 		MysqlDB: map[string]*gorm.DB{},

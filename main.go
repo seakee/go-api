@@ -5,19 +5,19 @@
 package main
 
 import (
+	"github.com/seakee/go-api/app/config"
 	"log"
 	"os"
 	"os/signal"
 	"runtime"
 
-	"github.com/seakee/go-api/app"
 	"github.com/seakee/go-api/bootstrap"
 )
 
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	config, err := app.LoadConfig()
+	config, err := config.LoadConfig()
 	if err != nil {
 		log.Fatal("Loading config error: ", err)
 	}
