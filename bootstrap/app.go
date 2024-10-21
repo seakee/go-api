@@ -15,16 +15,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/qiniu/qmgo"
-	"github.com/qiniu/qmgo/options"
 	"github.com/seakee/go-api/app/http/middleware"
 	"github.com/seakee/go-api/app/pkg/trace"
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/kafka"
 	"github.com/sk-pkg/logger"
-	"github.com/sk-pkg/mysql"
 	"github.com/sk-pkg/notify"
 	"github.com/sk-pkg/redis"
-	mgOpt "go.mongodb.org/mongo-driver/mongo/options"
 	"gorm.io/gorm"
 )
 
@@ -190,73 +187,6 @@ func (a *App) loadI18n(ctx context.Context) error {
 	}
 
 	return err
-}
-
-// loadDB initializes the database components (MySQL and MongoDB).
-//
-// Parameters:
-//   - ctx: The context for the operation.
-//
-// Returns:
-//   - error: An error if any database initialization fails.
-func (a *App) loadDB(ctx context.Context) error {
-	for _, db := range a.Config.Databases {
-		if db.Enable {
-			switch db.DbType {
-			case "mysql":
-				mysqlLogger := mysql.NewLog(a.Logger.CallerSkipMode(4))
-				d, err := mysql.New(mysql.WithConfigs(
-					mysql.Config{
-						User:     db.DbUsername,
-						Password: db.DbPassword,
-						Host:     db.DbHost,
-						DBName:   db.DbName,
-					}),
-					mysql.WithConnMaxLifetime(db.DbMaxLifetime*time.Hour),
-					mysql.WithMaxIdleConn(db.DbMaxIdleConn),
-					mysql.WithMaxOpenConn(db.DbMaxOpenConn),
-					mysql.WithGormConfig(gorm.Config{Logger: mysqlLogger}),
-				)
-
-				if err != nil {
-					return err
-				}
-
-				// if debug mode and not prod, enable gorm debug mode
-				if a.Config.System.DebugMode && a.Config.System.Env != "prod" {
-					d = d.Debug()
-				}
-
-				a.MysqlDB[db.DbName] = d
-			case "mongo":
-				maxPoolSize := uint64(db.DbMaxOpenConn)
-				minPoolSize := uint64(db.DbMaxIdleConn)
-				maxConnIdleTime := db.DbMaxLifetime * time.Hour
-
-				opts := options.ClientOptions{ClientOptions: &mgOpt.ClientOptions{MaxConnIdleTime: &maxConnIdleTime}}
-				cli, err := qmgo.NewClient(ctx, &qmgo.Config{
-					Uri:         db.DbHost,
-					MaxPoolSize: &maxPoolSize,
-					MinPoolSize: &minPoolSize,
-					Auth: &qmgo.Credential{
-						AuthMechanism: db.AuthMechanism,
-						AuthSource:    db.DbName,
-						Username:      db.DbUsername,
-						Password:      db.DbPassword,
-					},
-				}, opts)
-				if err != nil {
-					return err
-				}
-
-				a.MongoDB[db.DbName] = cli.Database(db.DbName)
-			}
-		}
-	}
-
-	a.Logger.Info(ctx, "Databases loaded successfully")
-
-	return nil
 }
 
 // loadNotify initializes the notification component.
