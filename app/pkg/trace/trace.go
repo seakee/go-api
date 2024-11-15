@@ -10,7 +10,6 @@ package trace
 import (
 	"log"
 	"os"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,8 +18,10 @@ import (
 )
 
 const (
-	initIndex = 10000000 // Initial sequence number
-	indexBase = 36       // Base for sequence number conversion
+	// used to initialize the index to a large value to avoid collisions
+	initIndex = 10000000
+	// used to pad the timestamp in the trace ID
+	digits = "0123456789abcdefghijklmnopqrstuvwxyz"
 )
 
 var (
@@ -74,7 +75,7 @@ func (t *ID) updatePrefix() {
 	})
 
 	// Construct the prefix using hostname and current timestamp
-	t.prefix = util.SpliceStr(hostname, "-", strconv.FormatInt(time.Now().UnixNano(), indexBase), "-")
+	t.prefix = util.SpliceStr(hostname, "-", formatBase36(uint64(time.Now().Unix())), "-")
 	t.index = initIndex
 }
 
@@ -102,8 +103,32 @@ func (t *ID) New() string {
 	}
 
 	// Convert the sequence number to a base-36 string
-	id := strconv.FormatUint(newIndex, indexBase)
+	id := formatBase36(newIndex)
 
 	// Combine the prefix and the sequence number
 	return util.SpliceStr(t.prefix, id)
+}
+
+// formatBase36 converts a number to a base-36 string.
+//
+// Parameters:
+//   - n: The number to be converted.
+//
+// Returns:
+//   - string: The base-36 representation of the number.
+func formatBase36(n uint64) string {
+	if n == 0 {
+		return "0"
+	}
+
+	var buf [13]byte // enough for 64-bit numbers
+	i := len(buf)
+
+	for n > 0 {
+		i--
+		buf[i] = digits[n%36]
+		n /= 36
+	}
+
+	return string(buf[i:])
 }

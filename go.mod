@@ -15,7 +15,7 @@ require (
 	github.com/sk-pkg/mysql v1.1.3
 	github.com/sk-pkg/notify v0.1.1
 	github.com/sk-pkg/redis v1.1.1
-	github.com/sk-pkg/util v1.0.1
+	github.com/sk-pkg/util v1.0.2
 	go.mongodb.org/mongo-driver v1.11.6
 	go.uber.org/zap v1.27.0
 	gorm.io/gorm v1.25.12
