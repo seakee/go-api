@@ -7,6 +7,9 @@ LABEL maintainer="Seakee <seakee23@gmail.com>"
 # Set the working directory for the build
 WORKDIR /build
 
+# Install git for downloading dependencies
+RUN apk add --no-cache git
+
 # Copy the go modules files and download dependencies
 COPY go.mod go.sum ./
 RUN go mod download
