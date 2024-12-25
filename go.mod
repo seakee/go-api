@@ -10,7 +10,7 @@ require (
 	github.com/qiniu/qmgo v1.1.8
 	github.com/sk-pkg/i18n v1.2.0
 	github.com/sk-pkg/kafka v1.0.1
-	github.com/sk-pkg/logger v1.3.2
+	github.com/sk-pkg/logger v1.3.3
 	github.com/sk-pkg/monitor v0.1.0
 	github.com/sk-pkg/mysql v1.1.3
 	github.com/sk-pkg/notify v0.1.1
