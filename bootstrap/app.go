@@ -102,6 +102,8 @@ func NewApp(config *config.Config) (*App, error) {
 // It runs each component in a separate goroutine.
 func (a *App) Start() {
 	ctx := context.WithValue(context.Background(), logger.TraceIDKey, a.TraceID.New())
+	// Start worker
+	go a.startWorker(ctx)
 	// Start HTTP server
 	go a.startHTTPServer(ctx)
 	// Start Kafka consumer
