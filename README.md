@@ -30,61 +30,65 @@ curl -O --location --request GET 'https://raw.githubusercontent.com/seakee/go-ap
 
 ```shell
 go-api
-├── README.md                       # Readme file
-├───── app                          # Application business directory
-│     ├── command                   # Command directory
-│     │   └── handler.go            # Command handler entry
-│     ├── config.go                 # System configuration information
-│     ├── consumer                  # Kafka consumer handler directory
-│     │   └── handler.go            # Kafka consumer handler entry
-│     ├── http                      # HTTP
-│     │   ├── controller            # Controller
-│     │   │   └── auth              # Authorization
-│     │   │       ├── app.go        # Application access
-│     │   │       ├── handler.go
-│     │   │       └── jwt.go
-│     │   ├── middleware            # HTTP middleware directory
-│     │   │   ├── check_app_auth.go # Authentication middleware
-│     │   │   ├── cors.go           # CORS middleware
-│     │   │   ├── handler.go        # Middleware entry
-│     │   │   └── requset_logger.go # Request logger middleware
-│     │   └── router                # Router
-│     │       ├── auth.go
-│     │       └── handler.go        # Router entry
-│     ├── model                     # Database model
-│     │   └── auth
-│     │       └── app.go
-│     ├── pkg                       # Business package
-│     │   ├── e                     # Error related directory
-│     │   │   └── code.go           # Interface business return codes
-│     │   └── jwt
-│     │       └── jwt.go
-│     ├── repository                # Data access layer
-│     │   └── auth
-│     │       └── app.go
-│     └── service                   # Data service layer
-│           └── handler.go
-├───── bin                          # Compilation directory
-│     ├── configs                   # Project configuration directory
-│     │   ├── dev.json
-│     │   ├── local.json
-│     │   └── prod.json
-│     ├── data                      # Project data directory
-│     │   └── sql                   # Project SQL directory
-│     │       └── auth_app.sql
-│     └── lang                      # Internationalization language directory
-│         ├── en-US.json
-│         └── zh-CN.json
-├───── bootstrap                    # Startup directory
-│     ├── app.go                    # Application startup logic
-│     ├── http.go                   # HTTP service startup logic
-│     └── kafka.go                  # Kafka service startup logic
-├───── go.mod
-├───── go.sum
-├───── main.go                      # Startup entry
-├───── scripts                      # Scripts
-│       └── generate.sh             # Script to generate an API project
-└───── vendor                       # Dependencies
+├── README.md                       # Project documentation
+├── app                             # Application business logic directory
+│   ├── command                     # Commands directory
+│   │   └── handler.go              # Command handler entry
+│   │   └── codegen                 # Code generation related directory
+│   │       └── handler.go          # Code generation handler
+│   │       └── codegen             # Code generation toolkit
+│   │           └── model.go        # Model generation related code
+│   ├── config.go                   # System configuration
+│   ├── consumer                    # Kafka consumer handlers directory
+│   │   └── handler.go              # Kafka consumer handler entry
+│   ├── http                        # HTTP related directory
+│   │   ├── controller              # Controllers directory
+│   │   │   └── auth                # Authorization related controllers
+│   │   │       ├── app.go          # Application access controller
+│   │   │       ├── handler.go      # Controller handler
+│   │   │       └── jwt.go          # JWT related controller
+│   │   ├── middleware              # HTTP middleware directory
+│   │   │   ├── check_app_auth.go   # Authentication middleware
+│   │   │   ├── cors.go             # CORS middleware
+│   │   │   ├── handler.go          # Middleware entry
+│   │   │   └── requset_logger.go   # Request logger middleware
+│   │   └── router                  # Routing directory
+│   │       ├── auth.go             # Authentication related routes
+│   │       └── handler.go          # Routing entry point
+│   ├── model                       # Database models directory
+│   │   └── auth                    # Authorization related models
+│   │       └── app.go              # Application access model
+│   ├── pkg                         # Business packages directory
+│   │   ├── e                       # Error handling directory
+│   │   │   └── code.go             # Interface business response codes
+│   │   └── jwt                     # JWT related directory
+│   │       └── jwt.go              # JWT related code
+│   ├── repository                  # Data access layer directory
+│   │   └── auth                    # Authorization related repositories
+│   │       └── app.go              # Application access repository
+│   └── service                     # Data service layer directory
+│       └── handler.go              # Service layer handler
+├── bin                             # Build directory
+│   ├── configs                     # Project configurations
+│   │   ├── dev.json                # Development environment config
+│   │   ├── local.json              # Local environment config
+│   │   └── prod.json               # Production environment config
+│   ├── data                        # Project data directory
+│   │   └── sql                     # SQL scripts directory
+│   │       └── auth_app.sql        # Authorization application SQL file
+│   └── lang                        # Internationalization directory
+│       ├── en-US.json              # English language file
+│       └── zh-CN.json              # Chinese language file
+├── bootstrap                       # Startup directory
+│   ├── app.go                      # Application startup logic
+│   ├── http.go                     # HTTP service startup
+│   └── kafka.go                    # Kafka service startup
+├── go.mod                          # Go module definition
+├── go.sum                          # Go module dependencies
+├── main.go                         # Main entry point
+├── scripts                         # Scripts directory
+│   └── generate.sh                 # API project generation script
+└── vendor                          # Dependency packages directory
 ```
 
 - `README.md`: Project readme
