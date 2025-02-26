@@ -17,12 +17,12 @@ import (
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	config, err := config.LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal("Loading config error: ", err)
+		log.Fatal("Loading cfg error: ", err)
 	}
 
-	a, err := bootstrap.NewApp(config)
+	a, err := bootstrap.NewApp(cfg)
 	if err != nil {
 		log.Fatal("New App error: ", err)
 	}
