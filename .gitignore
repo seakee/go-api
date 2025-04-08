@@ -18,3 +18,4 @@ bin/configs/local.json
 
 # Build output
 /bin/go-api
+/.lingma/
