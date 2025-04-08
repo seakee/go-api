@@ -126,8 +126,15 @@ func (a *App) loadTrace() {
 //   - error: An error if the logger initialization fails.
 func (a *App) loadLogger(ctx context.Context) error {
 	var err error
+
+	level := a.Config.Log.Level
+
+	if a.Config.System.DebugMode {
+		level = "debug"
+	}
+
 	a.Logger, err = logger.New(
-		logger.WithLevel(a.Config.Log.Level),
+		logger.WithLevel(level),
 		logger.WithDriver(a.Config.Log.Driver),
 		logger.WithLogPath(a.Config.Log.LogPath),
 	)
