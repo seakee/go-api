@@ -476,6 +476,19 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Delete(ctx context.Context, d
 	return db.WithContext(ctx).Where({{.StructNameFirstLetter}}).Delete({{.StructNameFirstLetter}}).Error
 }
 
+// Remove removes the {{.StructNameLower}} from the database permanently.
+//
+// Parameters:
+// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+// 	- db: *gorm.DB database connection.
+//
+// Returns:
+// 	- error: error if the remove operation fails, otherwise nil.
+func ({{.StructNameFirstLetter}} *{{.StructName}}) Remove(ctx context.Context, db *gorm.DB) error {
+	// Perform the database remove operation with context.
+	return db.WithContext(ctx).Unscoped().Delete({{.StructNameFirstLetter}}).Error
+}
+
 // Updates applies the specified updates to the {{.StructNameLower}} in the database.
 //
 // Parameters:
