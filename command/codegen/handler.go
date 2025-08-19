@@ -55,12 +55,13 @@ func processSingleSQLFile(force bool, name, sqlPath, modelOutputPath, repoOutput
 		log.Fatalf("Failed to generate model from %s: %v", sqlFilePath, err)
 	}
 
-	// The following code generates repository and service code, currently commented out
-	// repo := NewRepo(m)
-	// if err := repo.Generate(m, repoOutputPath); err != nil {
-	// 	log.Fatalf("Failed to generate repository from %s: %v", sqlFilePath, err)
-	// }
-	//
+	// Generate repository code
+	repo := codegen.NewRepository(m)
+	if err := repo.Generate(force, repoOutputPath); err != nil {
+		log.Fatalf("Failed to generate repository from %s: %v", sqlFilePath, err)
+	}
+
+	// The following code generates service code, currently commented out
 	// service := NewService(repo)
 	// if err := service.Generate(repo, serviceOutputPath); err != nil {
 	// 	log.Fatalf("Failed to generate service from %s: %v", sqlFilePath, err)
@@ -90,12 +91,13 @@ func processSQLDirectory(force bool, sqlPath, modelOutputPath, repoOutputPath, s
 				return err
 			}
 
-			// The following code generates repository and service code, currently commented out
-			// repo := NewRepo(m)
-			// if err = repo.Generate(m, repoOutputPath); err != nil {
-			// 	return err
-			// }
-			//
+			// Generate repository code
+			repo := codegen.NewRepository(m)
+			if err = repo.Generate(force, repoOutputPath); err != nil {
+				return err
+			}
+
+			// The following code generates service code, currently commented out
 			// service := NewService(repo)
 			// if err = service.Generate(repo, serviceOutputPath); err != nil {
 			// 	return err
