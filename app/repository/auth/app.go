@@ -2,126 +2,179 @@
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file.
 
-// Package auth provides functionality for authentication and authorization,
-// including operations for managing application entities.
 package auth
 
 import (
 	"context"
-
 	"github.com/seakee/go-api/app/model/auth"
 	"github.com/sk-pkg/redis"
 	"gorm.io/gorm"
 )
 
-// Repo defines the interface for application-related database operations.
-type Repo interface {
-	// GetApp retrieves an application by its properties.
+// AppRepo defines the interface for app-related database operations.
+type AppRepo interface {
+	// GetApp retrieves a app by its properties.
 	GetApp(ctx context.Context, app *auth.App) (*auth.App, error)
 
-	// Create inserts a new application into the database.
+	// Create inserts a new app into the database.
 	Create(ctx context.Context, app *auth.App) (uint, error)
 
-	// ExistAppByName checks if an application with the given name exists.
-	ExistAppByName(ctx context.Context, name string) (bool, error)
+	// Update updates an existing app in the database.
+	Update(ctx context.Context, id uint, app *auth.App) error
+
+	// Delete deletes a app by its ID.
+	Delete(ctx context.Context, id uint) error
+
+	// List retrieves app records based on query conditions.
+	List(ctx context.Context, app *auth.App) ([]auth.App, error)
+
+	// GetByID retrieves a app by its ID.
+	GetByID(ctx context.Context, id uint) (*auth.App, error)
 }
 
-// repo implements the Repo interface.
-type repo struct {
+// appRepo implements the AppRepo interface.
+type appRepo struct {
 	redis *redis.Manager
 	db    *gorm.DB
 }
 
-// ExistAppByName checks if an application with the given name exists in the database.
-//
-// Parameters:
-//   - ctx: A context.Context for handling cancellation and timeouts.
-//   - name: The name of the application to check.
-//
-// Returns:
-//   - exist: A boolean indicating whether the application exists.
-//   - err: An error if the database operation fails.
-//
-// Example:
-//
-//	exists, err := r.ExistAppByName(context.Background(), "MyApp")
-//	if err != nil {
-//	    log.Printf("Error checking app existence: %v", err)
-//	    return
-//	}
-//	if exists {
-//	    fmt.Println("Application already exists")
-//	}
-func (r repo) ExistAppByName(ctx context.Context, name string) (exist bool, err error) {
-	app := &auth.App{AppName: name}
-	a, err := app.First(ctx, r.db)
-	if a != nil {
-		exist = true
-	}
-
-	return
-}
-
-// Create inserts a new application into the database.
-//
-// Parameters:
-//   - ctx: A context.Context for handling cancellation and timeouts.
-//   - app: A pointer to the auth.App struct containing the application details.
-//
-// Returns:
-//   - uint: The ID of the newly created application.
-//   - error: An error if the database operation fails.
-//
-// Example:
-//
-//	newApp := &auth.App{AppName: "NewApp", Description: "A new application"}
-//	id, err := r.Create(context.Background(), newApp)
-//	if err != nil {
-//	    log.Printf("Error creating app: %v", err)
-//	    return
-//	}
-//	fmt.Printf("Created new app with ID: %d\n", id)
-func (r repo) Create(ctx context.Context, app *auth.App) (uint, error) {
-	return app.Create(ctx, r.db)
-}
-
-// GetApp retrieves an application from the database based on the provided App struct.
-//
-// Parameters:
-//   - ctx: A context.Context for handling cancellation and timeouts.
-//   - app: A pointer to an auth.App struct with search criteria.
-//
-// Returns:
-//   - *auth.App: A pointer to the retrieved application.
-//   - error: An error if the database operation fails.
-//
-// Example:
-//
-//	searchApp := &auth.App{ID: 1}
-//	foundApp, err := r.GetApp(context.Background(), searchApp)
-//	if err != nil {
-//	    log.Printf("Error retrieving app: %v", err)
-//	    return
-//	}
-//	fmt.Printf("Found app: %+v\n", foundApp)
-func (r repo) GetApp(ctx context.Context, app *auth.App) (*auth.App, error) {
-	return app.First(ctx, r.db)
-}
-
-// NewAppRepo creates a new instance of the application repository.
+// NewAppRepo creates a new instance of the app repository.
 //
 // Parameters:
 //   - db: A pointer to the gorm.DB instance for database operations.
 //   - redis: A pointer to the redis.Manager for caching operations.
 //
 // Returns:
-//   - Repo: An implementation of the Repo interface.
+//   - AppRepo: An implementation of the AppRepo interface.
 //
 // Example:
 //
 //	db := // initialize gorm.DB
 //	redisManager := // initialize redis.Manager
 //	appRepo := NewAppRepo(db, redisManager)
-func NewAppRepo(db *gorm.DB, redis *redis.Manager) Repo {
-	return &repo{redis: redis, db: db}
+func NewAppRepo(db *gorm.DB, redis *redis.Manager) AppRepo {
+	return &appRepo{redis: redis, db: db}
+}
+
+// GetApp retrieves a app by its properties using the model's First method.
+//
+// Parameters:
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - app: *auth.App the app with search criteria.
+//
+// Returns:
+//   - *auth.App: pointer to the retrieved app, or nil if not found.
+//   - error: error if the query fails, otherwise nil.
+func (r *appRepo) GetApp(ctx context.Context, app *auth.App) (*auth.App, error) {
+	return app.First(ctx, r.db)
+}
+
+// Create creates a new app record using the model's Create method.
+//
+// Parameters:
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - app: *auth.App the app to create.
+//
+// Returns:
+//   - uint: the ID of the created app.
+//   - error: error if the creation fails, otherwise nil.
+func (r *appRepo) Create(ctx context.Context, app *auth.App) (uint, error) {
+	return app.Create(ctx, r.db)
+}
+
+// GetByID retrieves a app by its ID using the model's Where and First methods.
+//
+// Parameters:
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - id: uint the ID of the app to retrieve.
+//
+// Returns:
+//   - *auth.App: pointer to the retrieved app, or nil if not found.
+//   - error: error if the query fails, otherwise nil.
+func (r *appRepo) GetByID(ctx context.Context, id uint) (*auth.App, error) {
+	app := &auth.App{}
+	return app.Where("id = ?", id).First(ctx, r.db)
+}
+
+// Update updates an existing app record using the model's Updates method.
+//
+// Parameters:
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - id: uint the ID of the app to update.
+//   - app: *auth.App the app with updated fields.
+//
+// Returns:
+//   - error: error if the update fails, otherwise nil.
+//
+// Note: This method will only update non-zero value fields. You need to manually check
+// each field and add it to the data map if it's not a zero value.
+func (r *appRepo) Update(ctx context.Context, id uint, app *auth.App) error {
+	data := make(map[string]interface{})
+
+	if app.AppId != "" {
+		data["app_id"] = app.AppId
+	}
+
+	if app.AppName != "" {
+		data["app_name"] = app.AppName
+	}
+
+	if app.AppSecret != "" {
+		data["app_secret"] = app.AppSecret
+	}
+
+	if app.RedirectUri != "" {
+		data["redirect_uri"] = app.RedirectUri
+	}
+
+	if app.Description != "" {
+		data["description"] = app.Description
+	}
+
+	if app.Status != 0 {
+		data["status"] = app.Status
+	}
+
+	if app.Default != nil {
+		data["default"] = app.Default
+	}
+
+	if app.Collate != nil {
+		data["collate"] = app.Collate
+	}
+
+	if len(data) == 0 {
+		return nil // No fields to update
+	}
+
+	updateModel := &auth.App{}
+	updateModel.ID = id
+
+	return updateModel.Updates(ctx, r.db, data)
+}
+
+// Delete deletes a app record using the model's Where and Delete methods.
+//
+// Parameters:
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - id: uint the ID of the app to delete.
+//
+// Returns:
+//   - error: error if the deletion fails, otherwise nil.
+func (r *appRepo) Delete(ctx context.Context, id uint) error {
+	app := &auth.App{}
+	return app.Where("id = ?", id).Delete(ctx, r.db)
+}
+
+// List retrieves app records based on query conditions using the model's List method.
+//
+// Parameters:
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - app: *auth.App the app with query conditions.
+//
+// Returns:
+//   - []auth.App: slice of app records.
+//   - error: error if the query fails, otherwise nil.
+func (r *appRepo) List(ctx context.Context, app *auth.App) ([]auth.App, error) {
+	return app.List(ctx, r.db)
 }

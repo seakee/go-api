@@ -15,17 +15,38 @@ import (
 type App struct {
 	gorm.Model
 
-	AppID       string `gorm:"column:app_id" json:"app_id"`             // Application ID
-	AppName     string `gorm:"column:app_name" json:"app_name"`         // Application Name
-	AppSecret   string `gorm:"column:app_secret" json:"app_secret"`     // Application Secret Key
-	RedirectUri string `gorm:"column:redirect_uri" json:"redirect_uri"` // Redirect URI after authorization
-	Description string `gorm:"column:description" json:"description"`   // Description
-	Status      int8   `gorm:"column:status" json:"status"`             // 1: Active; 2: Disabled
+	AppId       string `gorm:"column:app_id;type:varchar(30);not null" json:"app_id"`                  // 应用ID
+	AppName     string `gorm:"column:app_name;type:varchar(50);default:NULL" json:"app_name"`          // 应用名称
+	AppSecret   string `gorm:"column:app_secret;type:varchar(256);not null" json:"app_secret"`         // 应用的凭证密钥
+	RedirectUri string `gorm:"column:redirect_uri;type:varchar(500);default:NULL" json:"redirect_uri"` // 授权后重定向的回调链接地址
+	Description string `gorm:"column:description;type:text" json:"description"`                        // 描述信息
+	Status      int8   `gorm:"column:status;not null;default:0" json:"status"`                         // 0表示未开通；1表示正常使用；2表示已被禁用
+	Default     any    `gorm:"column:default;default:CHARSET" json:"default"`
+	Collate     any    `gorm:"column:collate" json:"collate"`
+
+	// Query conditions for chaining methods
+	queryCondition interface{}   `gorm:"-" json:"-"`
+	queryArgs      []interface{} `gorm:"-" json:"-"`
 }
 
 // TableName specifies the table name for the App model.
 func (a *App) TableName() string {
 	return "auth_app"
+}
+
+// Where sets query conditions for chaining with other methods.
+//
+// Parameters:
+//   - query: SQL query string or condition.
+//   - args: variadic arguments for the SQL query.
+//
+// Returns:
+//   - *App: pointer to the App instance for method chaining.
+func (a *App) Where(query interface{}, args ...interface{}) *App {
+	newApp := *a
+	newApp.queryCondition = query
+	newApp.queryArgs = args
+	return &newApp
 }
 
 // First retrieves the first app matching the criteria from the database.
@@ -40,8 +61,17 @@ func (a *App) TableName() string {
 func (a *App) First(ctx context.Context, db *gorm.DB) (*App, error) {
 	var app App
 
+	query := db.WithContext(ctx)
+
+	// Apply Where conditions if set
+	if a.queryCondition != nil {
+		query = query.Where(a.queryCondition, a.queryArgs...)
+	} else {
+		query = query.Where(a)
+	}
+
 	// Perform the database query with context.
-	if err := db.WithContext(ctx).Where(a).First(&app).Error; err != nil {
+	if err := query.First(&app).Error; err != nil {
 		// If no record is found, return nil without an error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -65,8 +95,17 @@ func (a *App) First(ctx context.Context, db *gorm.DB) (*App, error) {
 func (a *App) Last(ctx context.Context, db *gorm.DB) (*App, error) {
 	var app App
 
+	query := db.WithContext(ctx)
+
+	// Apply Where conditions if set
+	if a.queryCondition != nil {
+		query = query.Where(a.queryCondition, a.queryArgs...)
+	} else {
+		query = query.Where(a)
+	}
+
 	// Perform the database query with context.
-	if err := db.WithContext(ctx).Where(a).Order("id desc").First(&app).Error; err != nil {
+	if err := query.Order("id desc").First(&app).Error; err != nil {
 		// If no record is found, return nil without an error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -105,8 +144,17 @@ func (a *App) Create(ctx context.Context, db *gorm.DB) (uint, error) {
 // Returns:
 //   - error: error if the delete operation fails, otherwise nil.
 func (a *App) Delete(ctx context.Context, db *gorm.DB) error {
+	query := db.WithContext(ctx)
+
+	// Apply Where conditions if set
+	if a.queryCondition != nil {
+		query = query.Where(a.queryCondition, a.queryArgs...)
+	} else {
+		query = query.Where(a)
+	}
+
 	// Perform the database delete operation with context.
-	return db.WithContext(ctx).Delete(a).Error
+	return query.Delete(&App{}).Error
 }
 
 // Updates applies the specified updates to the app in the database.
@@ -119,8 +167,15 @@ func (a *App) Delete(ctx context.Context, db *gorm.DB) error {
 // Returns:
 //   - error: error if the update operation fails, otherwise nil.
 func (a *App) Updates(ctx context.Context, db *gorm.DB, updates map[string]interface{}) error {
+	query := db.WithContext(ctx).Model(a)
+
+	// Apply Where conditions if set
+	if a.queryCondition != nil {
+		query = query.Where(a.queryCondition, a.queryArgs...)
+	}
+
 	// Perform the database update operation with context.
-	return db.WithContext(ctx).Model(a).Updates(updates).Error
+	return query.Updates(updates).Error
 }
 
 // List retrieves all apps matching the criteria from the database.
@@ -135,8 +190,17 @@ func (a *App) Updates(ctx context.Context, db *gorm.DB, updates map[string]inter
 func (a *App) List(ctx context.Context, db *gorm.DB) ([]App, error) {
 	var apps []App
 
+	query := db.WithContext(ctx)
+
+	// Apply Where conditions if set
+	if a.queryCondition != nil {
+		query = query.Where(a.queryCondition, a.queryArgs...)
+	} else {
+		query = query.Where(a)
+	}
+
 	// Perform the database query with context.
-	if err := db.WithContext(ctx).Where(a).Find(&apps).Error; err != nil {
+	if err := query.Find(&apps).Error; err != nil {
 		return nil, fmt.Errorf("list failed: %w", err)
 	}
 
@@ -199,8 +263,17 @@ func (a *App) CountByArgs(ctx context.Context, db *gorm.DB, query interface{}, a
 func (a *App) Count(ctx context.Context, db *gorm.DB) (int64, error) {
 	var count int64
 
+	query := db.WithContext(ctx).Model(&App{})
+
+	// Apply Where conditions if set
+	if a.queryCondition != nil {
+		query = query.Where(a.queryCondition, a.queryArgs...)
+	} else {
+		query = query.Where(a)
+	}
+
 	// Perform the database count operation with context.
-	if err := db.WithContext(ctx).Model(&App{}).Where(a).Count(&count).Error; err != nil {
+	if err := query.Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("count failed: %w", err)
 	}
 
@@ -235,8 +308,17 @@ func (a *App) BatchInsert(ctx context.Context, db *gorm.DB, apps []App) error {
 func (a *App) FindWithPagination(ctx context.Context, db *gorm.DB, page, size int) ([]App, error) {
 	var apps []App
 
+	query := db.WithContext(ctx)
+
+	// Apply Where conditions if set
+	if a.queryCondition != nil {
+		query = query.Where(a.queryCondition, a.queryArgs...)
+	} else {
+		query = query.Where(a)
+	}
+
 	// Perform the database query with context, applying offset and limit for pagination.
-	if err := db.WithContext(ctx).Where(a).Offset((page - 1) * size).Limit(size).Find(&apps).Error; err != nil {
+	if err := query.Offset((page - 1) * size).Limit(size).Find(&apps).Error; err != nil {
 		// Return the error if the query fails.
 		return nil, fmt.Errorf("find with pagination failed: %w", err)
 	}
@@ -257,8 +339,17 @@ func (a *App) FindWithPagination(ctx context.Context, db *gorm.DB, page, size in
 func (a *App) FindWithSort(ctx context.Context, db *gorm.DB, sort string) ([]App, error) {
 	var apps []App
 
+	query := db.WithContext(ctx)
+
+	// Apply Where conditions if set
+	if a.queryCondition != nil {
+		query = query.Where(a.queryCondition, a.queryArgs...)
+	} else {
+		query = query.Where(a)
+	}
+
 	// Perform the database query with context, applying the specified sort order.
-	if err := db.WithContext(ctx).Where(a).Order(sort).Find(&apps).Error; err != nil {
+	if err := query.Order(sort).Find(&apps).Error; err != nil {
 		// Return the error if the query fails.
 		return nil, fmt.Errorf("find with sort failed: %w", err)
 	}
