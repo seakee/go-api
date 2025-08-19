@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -21,11 +23,17 @@ const defaultModelOutPath = "app/model"
 
 // Field represents a field in a database table.
 type Field struct {
-	Name     string // The name of the field in Go struct
-	Type     string // The Go type of the field
-	JsonName string // The JSON name of the field
-	GormTag  string // The GORM tag for the field
-	Comment  string // Comment associated with the field
+	Name            string // The name of the field in Go struct
+	Type            string // The Go type of the field
+	JsonName        string // The JSON name of the field
+	GormTag         string // The GORM tag for the field
+	Comment         string // Comment associated with the field
+	IsNullable      bool   // Whether the field can be null
+	DefaultValue    string // Default value of the field
+	Size            int    // Size for varchar, decimal precision, etc.
+	Scale           int    // Scale for decimal types
+	IsUnsigned      bool   // Whether the field is unsigned (for numeric types)
+	IsAutoIncrement bool   // Whether the field is auto increment
 }
 
 // Model represents the structure of a database table.
@@ -48,39 +56,60 @@ func NewModel() *Model {
 //
 // Parameters:
 //   - sqlType: A string representing the SQL type.
+//   - isUnsigned: A boolean indicating if the type is unsigned.
 //
 // Returns:
 //   - A string representing the Go type.
 //   - A string representing the import path required for the Go type, if any.
-func (m *Model) getGoType(sqlType string) (string, string) {
-	switch {
-	case strings.HasPrefix(sqlType, "int"):
-		return "int", ""
-	case strings.HasPrefix(sqlType, "tinyint"):
+func (m *Model) getGoType(sqlType string, isUnsigned bool) (string, string) {
+	// Extract base type and size information
+	typeRegex := regexp.MustCompile(`^(\w+)(?:\((\d+)(?:,(\d+))?\))?`)
+	matches := typeRegex.FindStringSubmatch(sqlType)
+
+	if len(matches) == 0 {
+		return "any", ""
+	}
+
+	baseType := strings.ToLower(matches[1])
+
+	switch baseType {
+	case "tinyint":
+		if isUnsigned {
+			return "uint8", ""
+		}
 		return "int8", ""
-	case strings.HasPrefix(sqlType, "smallint"):
+	case "smallint":
+		if isUnsigned {
+			return "uint16", ""
+		}
 		return "int16", ""
-	case strings.HasPrefix(sqlType, "mediumint"):
+	case "mediumint", "int":
+		if isUnsigned {
+			return "uint32", ""
+		}
 		return "int32", ""
-	case strings.HasPrefix(sqlType, "bigint"):
+	case "bigint":
+		if isUnsigned {
+			return "uint64", ""
+		}
 		return "int64", ""
-	case strings.HasPrefix(sqlType, "float"):
+	case "float":
 		return "float32", ""
-	case strings.HasPrefix(sqlType, "double"), strings.HasPrefix(sqlType, "real"):
+	case "double", "real":
 		return "float64", ""
-	case strings.HasPrefix(sqlType, "decimal"), strings.HasPrefix(sqlType, "numeric"):
+	case "decimal", "numeric":
 		return "decimal.Decimal", "github.com/shopspring/decimal"
-	case strings.HasPrefix(sqlType, "bit"):
+	case "bit":
 		return "uint64", ""
-	case strings.HasPrefix(sqlType, "bool"), strings.HasPrefix(sqlType, "boolean"):
+	case "bool", "boolean":
 		return "bool", ""
-	case strings.HasPrefix(sqlType, "char"), strings.HasPrefix(sqlType, "varchar"), strings.HasPrefix(sqlType, "text"), strings.HasPrefix(sqlType, "enum"), strings.HasPrefix(sqlType, "set"):
+	case "char", "varchar", "text", "tinytext", "mediumtext", "longtext", "enum", "set":
 		return "string", ""
-	case strings.HasPrefix(sqlType, "binary"), strings.HasPrefix(sqlType, "varbinary"), strings.HasPrefix(sqlType, "blob"):
+	case "binary", "varbinary", "blob", "tinyblob", "mediumblob", "longblob":
 		return "[]byte", ""
-	case strings.HasPrefix(sqlType, "date"), strings.HasPrefix(sqlType, "time"), strings.HasPrefix(sqlType, "datetime"), strings.HasPrefix(sqlType, "timestamp"), strings.HasPrefix(sqlType, "year"):
+	case "date", "time", "datetime", "timestamp", "year":
 		return "time.Time", "time"
-	case strings.HasPrefix(sqlType, "json"):
+	case "json":
 		return "datatypes.JSON", "gorm.io/datatypes"
 	default:
 		return "any", ""
@@ -105,13 +134,14 @@ func (m *Model) parseSQL(sql string) error {
 
 	// Process each line of the SQL schema.
 	for _, line := range lines {
-		// Trim whitespace and convert the line to lowercase.
-		line = strings.TrimSpace(strings.ToLower(line))
+		// Trim whitespace and convert the line to lowercase for parsing.
+		originalLine := strings.TrimSpace(line)
+		line = strings.ToLower(originalLine)
 		// Split the line into parts based on spaces.
 		parts := strings.Fields(line)
 
 		// Skip lines that do not have enough parts to be of interest.
-		if len(parts) < 3 {
+		if len(parts) < 2 {
 			continue
 		}
 
@@ -119,51 +149,178 @@ func (m *Model) parseSQL(sql string) error {
 		switch parts[0] {
 		case "create":
 			// If the line starts with "create table", extract the table name.
-			if parts[1] == "table" {
+			if len(parts) >= 3 && parts[1] == "table" {
 				m.TableName = strings.Trim(parts[2], "`")
 			}
-		case "primary", "unique", "key":
-			// Ignore lines starting with "primary", "unique", or "key".
-			goType, _ := m.getGoType(parts[1])
-			if goType == "any" {
-				return nil
-			}
+		case "primary", "unique", "key", "index", "constraint", "foreign":
+			// Ignore constraint and index lines.
+			continue
 		default:
 			// Process lines that define fields.
+			if strings.HasPrefix(line, ")") || strings.HasPrefix(line, "(") {
+				continue
+			}
+
 			name := strings.Trim(parts[0], "`")
 			// Skip certain predefined field names.
 			if name == "id" || name == "created_at" || name == "updated_at" || name == "deleted_at" {
 				continue
 			}
 
-			// Extract the comment if it exists.
-			comment := ""
-			if strings.Trim(parts[len(parts)-2], "") == "comment" {
-				comment = strings.Trim(parts[len(parts)-1], "'`,")
-				comment = "// " + comment
+			if len(parts) < 2 {
+				continue
 			}
 
-			// Determine the Go type and any required import for the field.
-			fieldType, importPath := m.getGoType(parts[1])
-			if importPath != "" {
-				m.Imports[importPath] = struct{}{}
+			// Parse field attributes
+			field := m.parseFieldDefinition(originalLine, name, parts)
+			if field != nil {
+				// Add the field to the Model's list of table fields.
+				m.TableFields = append(m.TableFields, *field)
 			}
-
-			// Create a Field struct with the extracted information.
-			field := Field{
-				Name:     strcase.ToCamel(name),          // Convert the field name to CamelCase.
-				Type:     fieldType,                      // Set the field type.
-				JsonName: name,                           // Set the JSON name for the field.
-				GormTag:  fmt.Sprintf("column:%s", name), // Set the GORM tag.
-				Comment:  comment,                        // Set the associated comment.
-			}
-
-			// Add the field to the Model's list of table fields.
-			m.TableFields = append(m.TableFields, field)
 		}
 	}
 
 	return nil
+}
+
+// parseFieldDefinition parses a single field definition line
+func (m *Model) parseFieldDefinition(originalLine, fieldName string, parts []string) *Field {
+	if len(parts) < 2 {
+		return nil
+	}
+
+	field := &Field{
+		Name:     strcase.ToCamel(fieldName),
+		JsonName: fieldName,
+	}
+
+	// Parse field type and attributes
+	typeStr := parts[1]
+
+	// Check for UNSIGNED
+	field.IsUnsigned = strings.Contains(strings.ToUpper(originalLine), "UNSIGNED")
+
+	// Check for NOT NULL
+	field.IsNullable = !strings.Contains(strings.ToUpper(originalLine), "NOT NULL")
+
+	// Check for AUTO_INCREMENT
+	field.IsAutoIncrement = strings.Contains(strings.ToUpper(originalLine), "AUTO_INCREMENT")
+
+	// Extract size and scale information
+	field.Size, field.Scale = m.extractSizeAndScale(typeStr)
+
+	// Extract default value
+	field.DefaultValue = m.extractDefaultValue(originalLine)
+
+	// Extract comment
+	field.Comment = m.extractComment(originalLine)
+
+	// Determine the Go type and any required import for the field.
+	fieldType, importPath := m.getGoType(typeStr, field.IsUnsigned)
+	field.Type = fieldType
+
+	if importPath != "" {
+		m.Imports[importPath] = struct{}{}
+	}
+
+	// Generate GORM tag
+	field.GormTag = m.generateGormTag(field, typeStr)
+
+	return field
+}
+
+// extractSizeAndScale extracts size and scale from type definition like VARCHAR(255) or DECIMAL(10,2)
+func (m *Model) extractSizeAndScale(typeStr string) (int, int) {
+	typeRegex := regexp.MustCompile(`^(\w+)(?:\((\d+)(?:,(\d+))?\))?`)
+	matches := typeRegex.FindStringSubmatch(typeStr)
+
+	if len(matches) < 3 {
+		return 0, 0
+	}
+
+	size := 0
+	scale := 0
+
+	if matches[2] != "" {
+		if s, err := strconv.Atoi(matches[2]); err == nil {
+			size = s
+		}
+	}
+
+	if len(matches) > 3 && matches[3] != "" {
+		if s, err := strconv.Atoi(matches[3]); err == nil {
+			scale = s
+		}
+	}
+
+	return size, scale
+}
+
+// extractDefaultValue extracts default value from field definition
+func (m *Model) extractDefaultValue(line string) string {
+	defaultRegex := regexp.MustCompile(`(?i)default\s+([^,\s]+)`)
+	matches := defaultRegex.FindStringSubmatch(line)
+
+	if len(matches) > 1 {
+		return strings.Trim(matches[1], "'\"")
+	}
+
+	return ""
+}
+
+// extractComment extracts comment from field definition
+func (m *Model) extractComment(line string) string {
+	// Support both COMMENT 'text' and COMMENT "text" formats
+	commentRegex := regexp.MustCompile(`(?i)comment\s+['"]([^'"]*?)['"]`)
+	matches := commentRegex.FindStringSubmatch(line)
+
+	if len(matches) > 1 {
+		return "// " + matches[1]
+	}
+
+	return ""
+}
+
+// generateGormTag generates appropriate GORM tag for the field
+func (m *Model) generateGormTag(field *Field, typeStr string) string {
+	var tags []string
+
+	// Column name
+	tags = append(tags, fmt.Sprintf("column:%s", field.JsonName))
+
+	// Type specification for certain types
+	baseType := strings.ToLower(strings.Split(typeStr, "(")[0])
+	switch baseType {
+	case "varchar", "char":
+		if field.Size > 0 {
+			tags = append(tags, fmt.Sprintf("type:varchar(%d)", field.Size))
+		}
+	case "decimal", "numeric":
+		if field.Size > 0 && field.Scale > 0 {
+			tags = append(tags, fmt.Sprintf("type:decimal(%d,%d)", field.Size, field.Scale))
+		} else if field.Size > 0 {
+			tags = append(tags, fmt.Sprintf("type:decimal(%d)", field.Size))
+		}
+	case "text", "tinytext", "mediumtext", "longtext":
+		tags = append(tags, fmt.Sprintf("type:%s", baseType))
+	}
+
+	// NOT NULL constraint
+	if !field.IsNullable {
+		tags = append(tags, "not null")
+	}
+
+	// Default value
+	if field.DefaultValue != "" {
+		tags = append(tags, fmt.Sprintf("default:%s", field.DefaultValue))
+	}
+
+	// Auto increment
+	if field.IsAutoIncrement {
+		tags = append(tags, "autoIncrement")
+	}
+
+	return strings.Join(tags, ";")
 }
 
 // generateCode generates Go code for the model based on the parsed SQL schema.
@@ -176,14 +333,7 @@ func (m *Model) parseSQL(sql string) error {
 //   - An error if there is an issue generating the code.
 func (m *Model) generateCode() (string, error) {
 	// Determine the package and struct names based on the table name.
-	parts := strings.Split(m.TableName, "_")
-	if len(parts) > 1 {
-		m.PackageName = parts[len(parts)-2]
-		m.StructName = strcase.ToCamel(parts[len(parts)-1])
-	} else {
-		m.PackageName = m.TableName
-		m.StructName = strcase.ToCamel(m.TableName)
-	}
+	m.PackageName, m.StructName = m.generateNames(m.TableName)
 
 	// Parse the model template.
 	tmpl := template.Must(template.New("model").Parse(modelTemplate))
@@ -203,6 +353,59 @@ func (m *Model) generateCode() (string, error) {
 	}
 
 	return result.String(), nil
+}
+
+// generateNames generates package name and struct name from table name
+// Supports various naming conventions:
+// - user_profiles -> package: user, struct: Profile
+// - auth_user_tokens -> package: auth, struct: UserToken
+// - products -> package: products, struct: Product
+// - user_role_permissions -> package: user, struct: RolePermission
+func (m *Model) generateNames(tableName string) (packageName, structName string) {
+	parts := strings.Split(tableName, "_")
+
+	switch len(parts) {
+	case 1:
+		// Single word table name: products -> package: products, struct: Product
+		packageName = tableName
+		structName = strcase.ToCamel(tableName)
+		// Handle plural to singular conversion for common cases
+		if strings.HasSuffix(structName, "s") && len(structName) > 1 {
+			structName = structName[:len(structName)-1]
+		}
+	case 2:
+		// Two parts: user_profiles -> package: user, struct: Profile
+		packageName = parts[0]
+		structName = strcase.ToCamel(parts[1])
+		// Handle plural to singular conversion
+		if strings.HasSuffix(structName, "s") && len(structName) > 1 {
+			structName = structName[:len(structName)-1]
+		}
+	default:
+		// Multiple parts: auth_user_tokens -> package: auth, struct: UserToken
+		packageName = parts[0]
+		// Combine remaining parts for struct name
+		remainingParts := parts[1:]
+		var structParts []string
+		for _, part := range remainingParts {
+			// Handle plural to singular for the last part
+			if part == remainingParts[len(remainingParts)-1] && strings.HasSuffix(part, "s") && len(part) > 1 {
+				part = part[:len(part)-1]
+			}
+			structParts = append(structParts, strcase.ToCamel(part))
+		}
+		structName = strings.Join(structParts, "")
+	}
+
+	// Ensure package name is valid Go identifier
+	packageName = strings.ToLower(packageName)
+
+	// Ensure struct name starts with uppercase
+	if len(structName) > 0 {
+		structName = strings.ToUpper(structName[0:1]) + structName[1:]
+	}
+
+	return packageName, structName
 }
 
 // readSQLFile reads the content of the specified SQL file.
@@ -388,11 +591,30 @@ type {{.StructName}} struct {
 	{{- range .TableFields}}
 	{{.Name}} {{.Type}} ` + "`gorm:\"{{.GormTag}}\" json:\"{{.JsonName}}\"`" + ` {{.Comment}}
 	{{- end}}
+
+	// Query conditions for chaining methods
+	queryCondition interface{}   ` + "`gorm:\"-\" json:\"-\"`" + `
+	queryArgs      []interface{} ` + "`gorm:\"-\" json:\"-\"`" + `
 }
 
 // TableName specifies the table name for the {{.StructName}} model.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) TableName() string {
 	return "{{.TableName}}"
+}
+
+// WithArgs sets query conditions for chaining with other methods.
+//
+// Parameters:
+// 	- query: SQL query string or condition.
+// 	- args: variadic arguments for the SQL query.
+//
+// Returns:
+// 	- *{{.StructName}}: pointer to the {{.StructName}} instance for method chaining.
+func ({{.StructNameFirstLetter}} *{{.StructName}}) WithArgs(query interface{}, args ...interface{}) *{{.StructName}} {
+	new{{.StructName}} := *{{.StructNameFirstLetter}}
+	new{{.StructName}}.queryCondition = query
+	new{{.StructName}}.queryArgs = args
+	return &new{{.StructName}}
 }
 
 // First retrieves the first {{.StructNameLower}} matching the criteria from the database.
@@ -407,8 +629,17 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) TableName() string {
 func ({{.StructNameFirstLetter}} *{{.StructName}}) First(ctx context.Context, db *gorm.DB) (*{{.StructName}}, error) {
 	var {{.StructNameLower}} {{.StructName}}
 
-    // Perform the database query with context.
-	if err := db.WithContext(ctx).Where({{.StructNameFirstLetter}}).First(&{{.StructNameLower}}).Error; err != nil {
+	query := db.WithContext(ctx)
+	
+	// Apply WithArgs conditions if set
+	if {{.StructNameFirstLetter}}.queryCondition != nil {
+		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
+	} else {
+		query = query.Where({{.StructNameFirstLetter}})
+	}
+
+	// Perform the database query with context.
+	if err := query.First(&{{.StructNameLower}}).Error; err != nil {
 		// If no record is found, return nil without an error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -432,8 +663,17 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) First(ctx context.Context, db
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db *gorm.DB) (*{{.StructName}}, error) {
 	var {{.StructNameLower}} {{.StructName}}
 
+	query := db.WithContext(ctx)
+	
+	// Apply WithArgs conditions if set
+	if {{.StructNameFirstLetter}}.queryCondition != nil {
+		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
+	} else {
+		query = query.Where({{.StructNameFirstLetter}})
+	}
+
 	// Perform the database query with context.
-	if err := db.WithContext(ctx).Where({{.StructNameFirstLetter}}).Order("id desc").First(&{{.StructNameLower}}).Error; err != nil {
+	if err := query.Order("id desc").First(&{{.StructNameLower}}).Error; err != nil {
 		// If no record is found, return nil without an error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -472,21 +712,17 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, d
 // Returns:
 // 	- error: error if the delete operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Delete(ctx context.Context, db *gorm.DB) error {
-	// Perform the database delete operation with context.
-	return db.WithContext(ctx).Where({{.StructNameFirstLetter}}).Delete({{.StructNameFirstLetter}}).Error
-}
+	query := db.WithContext(ctx)
+	
+	// Apply WithArgs conditions if set
+	if {{.StructNameFirstLetter}}.queryCondition != nil {
+		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
+	} else {
+		query = query.Where({{.StructNameFirstLetter}})
+	}
 
-// Remove removes the {{.StructNameLower}} from the database permanently.
-//
-// Parameters:
-// 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
-// 	- db: *gorm.DB database connection.
-//
-// Returns:
-// 	- error: error if the remove operation fails, otherwise nil.
-func ({{.StructNameFirstLetter}} *{{.StructName}}) Remove(ctx context.Context, db *gorm.DB) error {
-	// Perform the database remove operation with context.
-	return db.WithContext(ctx).Unscoped().Delete({{.StructNameFirstLetter}}).Error
+	// Perform the database delete operation with context.
+	return query.Delete(&{{.StructName}}{}).Error
 }
 
 // Updates applies the specified updates to the {{.StructNameLower}} in the database.
@@ -499,8 +735,15 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Remove(ctx context.Context, d
 // Returns:
 // 	- error: error if the update operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Updates(ctx context.Context, db *gorm.DB, updates map[string]interface{}) error {
+	query := db.WithContext(ctx).Model({{.StructNameFirstLetter}})
+	
+	// Apply WithArgs conditions if set
+	if {{.StructNameFirstLetter}}.queryCondition != nil {
+		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
+	}
+
 	// Perform the database update operation with context.
-	return db.WithContext(ctx).Model({{.StructNameFirstLetter}}).Updates(updates).Error
+	return query.Updates(updates).Error
 }
 
 // List retrieves all {{.StructNameLower}}s matching the criteria from the database.
@@ -514,9 +757,18 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Updates(ctx context.Context, 
 // 	- error: error if the query fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) List(ctx context.Context, db *gorm.DB) ([]{{.StructName}}, error) {
 	var {{.StructNameLower}}s []{{.StructName}}
+
+	query := db.WithContext(ctx)
+	
+	// Apply WithArgs conditions if set
+	if {{.StructNameFirstLetter}}.queryCondition != nil {
+		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
+	} else {
+		query = query.Where({{.StructNameFirstLetter}})
+	}
 	
 	// Perform the database query with context.
-	if err := db.WithContext(ctx).Where({{.StructNameFirstLetter}}).Find(&{{.StructNameLower}}s).Error; err != nil {
+	if err := query.Find(&{{.StructNameLower}}s).Error; err != nil {
 		return nil, fmt.Errorf("list failed: %w", err)
 	}
 
@@ -579,8 +831,17 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) CountByArgs(ctx context.Conte
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Count(ctx context.Context, db *gorm.DB) (int64, error) {
 	var count int64
 
+	query := db.WithContext(ctx).Model(&{{.StructName}}{})
+	
+	// Apply WithArgs conditions if set
+	if {{.StructNameFirstLetter}}.queryCondition != nil {
+		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
+	} else {
+		query = query.Where({{.StructNameFirstLetter}})
+	}
+
 	// Perform the database count operation with context.
-	if err := db.WithContext(ctx).Model(&{{.StructName}}{}).Where({{.StructNameFirstLetter}}).Count(&count).Error; err != nil {
+	if err := query.Count(&count).Error; err != nil {
 		return 0, fmt.Errorf("count failed: %w", err)
 	}
 
@@ -615,8 +876,17 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) BatchInsert(ctx context.Conte
 func ({{.StructNameFirstLetter}} *{{.StructName}}) FindWithPagination(ctx context.Context, db *gorm.DB, page, size int) ([]{{.StructName}}, error) {
 	var {{.StructNameLower}}s []{{.StructName}}
 
+	query := db.WithContext(ctx)
+	
+	// Apply WithArgs conditions if set
+	if {{.StructNameFirstLetter}}.queryCondition != nil {
+		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
+	} else {
+		query = query.Where({{.StructNameFirstLetter}})
+	}
+
 	// Perform the database query with context, applying offset and limit for pagination.
-	if err := db.WithContext(ctx).Where({{.StructNameFirstLetter}}).Offset((page - 1) * size).Limit(size).Find(&{{.StructNameLower}}s).Error; err != nil {
+	if err := query.Offset((page - 1) * size).Limit(size).Find(&{{.StructNameLower}}s).Error; err != nil {
 		// Return the error if the query fails.
 		return nil, fmt.Errorf("find with pagination failed: %w", err)
 	}
@@ -637,8 +907,17 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) FindWithPagination(ctx contex
 func ({{.StructNameFirstLetter}} *{{.StructName}}) FindWithSort(ctx context.Context, db *gorm.DB, sort string) ([]{{.StructName}}, error) {
 	var {{.StructNameLower}}s []{{.StructName}}
 
+	query := db.WithContext(ctx)
+	
+	// Apply WithArgs conditions if set
+	if {{.StructNameFirstLetter}}.queryCondition != nil {
+		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
+	} else {
+		query = query.Where({{.StructNameFirstLetter}})
+	}
+
 	// Perform the database query with context, applying the specified sort order.
-	if err := db.WithContext(ctx).Where({{.StructNameFirstLetter}}).Order(sort).Find(&{{.StructNameLower}}s).Error; err != nil {
+	if err := query.Order(sort).Find(&{{.StructNameLower}}s).Error; err != nil {
 		// Return the error if the query fails.
 		return nil, fmt.Errorf("find with sort failed: %w", err)
 	}
