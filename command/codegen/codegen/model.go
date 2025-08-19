@@ -602,7 +602,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) TableName() string {
 	return "{{.TableName}}"
 }
 
-// WithArgs sets query conditions for chaining with other methods.
+// Where sets query conditions for chaining with other methods.
 //
 // Parameters:
 // 	- query: SQL query string or condition.
@@ -610,7 +610,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) TableName() string {
 //
 // Returns:
 // 	- *{{.StructName}}: pointer to the {{.StructName}} instance for method chaining.
-func ({{.StructNameFirstLetter}} *{{.StructName}}) WithArgs(query interface{}, args ...interface{}) *{{.StructName}} {
+func ({{.StructNameFirstLetter}} *{{.StructName}}) Where(query interface{}, args ...interface{}) *{{.StructName}} {
 	new{{.StructName}} := *{{.StructNameFirstLetter}}
 	new{{.StructName}}.queryCondition = query
 	new{{.StructName}}.queryArgs = args
@@ -631,7 +631,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) First(ctx context.Context, db
 
 	query := db.WithContext(ctx)
 	
-	// Apply WithArgs conditions if set
+	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
 	} else {
@@ -665,7 +665,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 
 	query := db.WithContext(ctx)
 	
-	// Apply WithArgs conditions if set
+	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
 	} else {
@@ -714,7 +714,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, d
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Delete(ctx context.Context, db *gorm.DB) error {
 	query := db.WithContext(ctx)
 	
-	// Apply WithArgs conditions if set
+	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
 	} else {
@@ -737,7 +737,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Delete(ctx context.Context, d
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Updates(ctx context.Context, db *gorm.DB, updates map[string]interface{}) error {
 	query := db.WithContext(ctx).Model({{.StructNameFirstLetter}})
 	
-	// Apply WithArgs conditions if set
+	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
 	}
@@ -760,7 +760,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) List(ctx context.Context, db 
 
 	query := db.WithContext(ctx)
 	
-	// Apply WithArgs conditions if set
+	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
 	} else {
@@ -833,7 +833,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Count(ctx context.Context, db
 
 	query := db.WithContext(ctx).Model(&{{.StructName}}{})
 	
-	// Apply WithArgs conditions if set
+	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
 	} else {
@@ -878,7 +878,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) FindWithPagination(ctx contex
 
 	query := db.WithContext(ctx)
 	
-	// Apply WithArgs conditions if set
+	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
 	} else {
@@ -909,7 +909,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) FindWithSort(ctx context.Cont
 
 	query := db.WithContext(ctx)
 	
-	// Apply WithArgs conditions if set
+	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
 	} else {

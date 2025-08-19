@@ -12,7 +12,7 @@ import (
 func TestModel_Generate(t *testing.T) {
 	m := NewModel()
 
-	err := m.Generate(false, "/github.com/seakee/go-api/bin/data/sql/auth_app.sql", "")
+	err := m.Generate(false, "../../../bin/data/sql/auth_app.sql", "")
 	if err != nil {
 		t.Fatal(err)
 	}
