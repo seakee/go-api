@@ -1,11 +1,11 @@
 # Go API 代码生成器
 
-[English](README.md) | [中文](README_ZH.MD)
+[English](README.md) | 中文
 
 ---
 ### 概述
 
-Go API 代码生成器是一个强大的工具，可以从 MySQL CREATE TABLE 语句自动生成 Go 模型代码。它解析 SQL 文件并创建相应的带有 GORM 标签的 Go 结构体，以及常用的数据库操作方法。
+Go API 代码生成器是一个强大的工具，可以从 MySQL CREATE TABLE 语句自动生成 Go 模型和仓库代码。它解析 SQL 文件并创建相应的带有 GORM 标签的 Go 结构体，以及仓库接口和实现，用于常用的数据库操作。
 
 ### 功能特性
 
@@ -13,6 +13,9 @@ Go API 代码生成器是一个强大的工具，可以从 MySQL CREATE TABLE �
 - **类型映射**: 从 MySQL 类型到 Go 类型的全面映射
 - **GORM 集成**: 自动生成 GORM 标签（column, size, not null, default 等）
 - **注释支持**: 保留 SQL 注释作为 Go 结构体字段注释
+- **仓库生成**: 自动生成仓库接口和实现
+- **智能更新逻辑**: 生成只更新非零值字段的更新方法
+- **灵活的列表方法**: 接受结构体参数作为查询条件的列表方法
 - **批量处理**: 处理单个文件或整个目录
 - **强制覆盖**: 可选择覆盖现有文件
 
@@ -79,15 +82,22 @@ CREATE TABLE `auth_app`
 
 ### 生成的输出
 
-生成器创建的 Go 结构体包含：
+生成器创建：
 
+**模型文件：**
 1. **正确的 Go 命名规范**（snake_case → CamelCase）
 2. **GORM 标签**用于数据库映射
 3. **JSON 标签**用于 API 序列化
 4. **字段注释**来自 SQL 注释
 5. **常用数据库方法**（CRUD 操作）
 
-**生成代码示例：**
+**仓库文件：**
+1. **仓库接口**包含标准 CRUD 操作
+2. **仓库实现**支持依赖注入
+3. **智能更新方法**只更新非零值字段
+4. **灵活的列表方法**接受结构体参数进行过滤
+
+**生成的模型代码示例：**
 
 ```go
 package auth
@@ -113,8 +123,64 @@ func (a *App) TableName() string {
 // 数据库操作方法...
 func (a *App) First(ctx context.Context, db *gorm.DB) (*App, error) { /* ... */ }
 func (a *App) Create(ctx context.Context, db *gorm.DB) (uint, error) { /* ... */ }
-func (a *App) Updates(ctx context.Context, db *gorm.DB, updates map[string]interface{}) error { /* ... */ }
+func (a *App) List(ctx context.Context, db *gorm.DB) ([]App, error) { /* ... */ }
 // ... 更多方法
+```
+
+**生成的仓库代码示例：**
+
+```go
+package auth
+
+import (
+    "context"
+    "github.com/seakee/go-api/app/model/auth"
+    "github.com/sk-pkg/redis"
+    "gorm.io/gorm"
+)
+
+// 仓库接口
+type AppRepo interface {
+    GetApp(ctx context.Context, app *auth.App) (*auth.App, error)
+    Create(ctx context.Context, app *auth.App) (uint, error)
+    Update(ctx context.Context, id uint, app *auth.App) error
+    Delete(ctx context.Context, id uint) error
+    List(ctx context.Context, app *auth.App) ([]auth.App, error)
+    GetByID(ctx context.Context, id uint) (*auth.App, error)
+}
+
+// 仓库实现
+type appRepo struct {
+    redis *redis.Manager
+    db    *gorm.DB
+}
+
+func NewAppRepo(db *gorm.DB, redis *redis.Manager) AppRepo {
+    return &appRepo{
+        redis: redis,
+        db:    db,
+    }
+}
+
+// 智能更新方法 - 只更新非零值字段
+func (r *appRepo) Update(ctx context.Context, id uint, app *auth.App) error {
+    updates := make(map[string]interface{})
+    
+    if app.AppID != "" {
+        updates["app_id"] = app.AppID
+    }
+    if app.AppName != "" {
+        updates["app_name"] = app.AppName
+    }
+    // ... 更多字段检查
+    
+    return r.db.WithContext(ctx).Model(&auth.App{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// 带结构体参数的列表方法用于过滤
+func (r *appRepo) List(ctx context.Context, app *auth.App) ([]auth.App, error) {
+    return app.List(ctx, r.db)
+}
 ```
 
 ### 支持的 MySQL 类型
@@ -144,7 +210,9 @@ project/
 ├── app/model/              # 生成的模型（输出）
 │   └── auth/
 │       └── app.go
-├── app/repository/         # 生成的仓库（未来功能）
+├── app/repository/         # 生成的仓库（输出）
+│   └── auth/
+│       └── app.go
 └── app/service/           # 生成的服务（未来功能）
 ```
 
@@ -181,11 +249,3 @@ project/
 - 使用单个文件测试：`./codegen -name your_table`
 - 检查生成的文件内容
 - 验证 SQL 文件格式
-
-### 贡献
-
-欢迎提交 Issue 和 Pull Request 来改进这个工具。
-
-### 许可证
-
-本项目采用 MIT 许可证。详见 LICENSE 文件。

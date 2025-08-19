@@ -1,11 +1,11 @@
 # Go API Code Generator
 
-[English](README.md#english) | [中文](README_ZH.MD)
+English | [中文](README_ZH.MD)
 
 ---
 ### Overview
 
-The Go API Code Generator is a powerful tool that automatically generates Go model code from MySQL CREATE TABLE statements. It parses SQL files and creates corresponding Go structs with GORM tags, along with common database operations.
+The Go API Code Generator is a powerful tool that automatically generates Go model and repository code from MySQL CREATE TABLE statements. It parses SQL files and creates corresponding Go structs with GORM tags, along with repository interfaces and implementations for common database operations.
 
 ### Features
 
@@ -13,6 +13,9 @@ The Go API Code Generator is a powerful tool that automatically generates Go mod
 - **Type Mapping**: Comprehensive mapping from MySQL types to Go types
 - **GORM Integration**: Automatic generation of GORM tags (column, size, not null, default, etc.)
 - **Comment Support**: Preserves SQL comments as Go struct field comments
+- **Repository Generation**: Automatic generation of repository interfaces and implementations
+- **Smart Update Logic**: Generates update methods that only update non-zero fields
+- **Flexible List Methods**: List methods that accept struct parameters for query conditions
 - **Batch Processing**: Process single files or entire directories
 - **Force Overwrite**: Option to overwrite existing files
 
@@ -79,15 +82,22 @@ CREATE TABLE `auth_app`
 
 ### Generated Output
 
-The generator creates Go structs with:
+The generator creates:
 
+**Model Files:**
 1. **Proper Go naming conventions** (snake_case → CamelCase)
 2. **GORM tags** for database mapping
 3. **JSON tags** for API serialization
 4. **Field comments** from SQL comments
 5. **Common database methods** (CRUD operations)
 
-**Example Generated Code:**
+**Repository Files:**
+1. **Repository interfaces** with standard CRUD operations
+2. **Repository implementations** with dependency injection
+3. **Smart update methods** that only update non-zero fields
+4. **Flexible list methods** that accept struct parameters for filtering
+
+**Example Generated Model Code:**
 
 ```go
 package auth
@@ -113,8 +123,64 @@ func (a *App) TableName() string {
 // Database operation methods...
 func (a *App) First(ctx context.Context, db *gorm.DB) (*App, error) { /* ... */ }
 func (a *App) Create(ctx context.Context, db *gorm.DB) (uint, error) { /* ... */ }
-func (a *App) Updates(ctx context.Context, db *gorm.DB, updates map[string]interface{}) error { /* ... */ }
+func (a *App) List(ctx context.Context, db *gorm.DB) ([]App, error) { /* ... */ }
 // ... more methods
+```
+
+**Example Generated Repository Code:**
+
+```go
+package auth
+
+import (
+    "context"
+    "github.com/seakee/go-api/app/model/auth"
+    "github.com/sk-pkg/redis"
+    "gorm.io/gorm"
+)
+
+// Repository interface
+type AppRepo interface {
+    GetApp(ctx context.Context, app *auth.App) (*auth.App, error)
+    Create(ctx context.Context, app *auth.App) (uint, error)
+    Update(ctx context.Context, id uint, app *auth.App) error
+    Delete(ctx context.Context, id uint) error
+    List(ctx context.Context, app *auth.App) ([]auth.App, error)
+    GetByID(ctx context.Context, id uint) (*auth.App, error)
+}
+
+// Repository implementation
+type appRepo struct {
+    redis *redis.Manager
+    db    *gorm.DB
+}
+
+func NewAppRepo(db *gorm.DB, redis *redis.Manager) AppRepo {
+    return &appRepo{
+        redis: redis,
+        db:    db,
+    }
+}
+
+// Smart update method - only updates non-zero fields
+func (r *appRepo) Update(ctx context.Context, id uint, app *auth.App) error {
+    updates := make(map[string]interface{})
+    
+    if app.AppID != "" {
+        updates["app_id"] = app.AppID
+    }
+    if app.AppName != "" {
+        updates["app_name"] = app.AppName
+    }
+    // ... more field checks
+    
+    return r.db.WithContext(ctx).Model(&auth.App{}).Where("id = ?", id).Updates(updates).Error
+}
+
+// List method with struct parameter for filtering
+func (r *appRepo) List(ctx context.Context, app *auth.App) ([]auth.App, error) {
+    return app.List(ctx, r.db)
+}
 ```
 
 ### Supported MySQL Types
@@ -144,7 +210,9 @@ project/
 ├── app/model/              # Generated models (output)
 │   └── auth/
 │       └── app.go
-├── app/repository/         # Generated repositories (future)
+├── app/repository/         # Generated repositories (output)
+│   └── auth/
+│       └── app.go
 └── app/service/           # Generated services (future)
 ```
 
