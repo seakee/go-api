@@ -135,14 +135,6 @@ func (r *appRepo) Update(ctx context.Context, id uint, app *auth.App) error {
 		data["status"] = app.Status
 	}
 
-	if app.Default != nil {
-		data["default"] = app.Default
-	}
-
-	if app.Collate != nil {
-		data["collate"] = app.Collate
-	}
-
 	if len(data) == 0 {
 		return nil // No fields to update
 	}

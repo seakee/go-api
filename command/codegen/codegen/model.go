@@ -152,12 +152,18 @@ func (m *Model) parseSQL(sql string) error {
 			if len(parts) >= 3 && parts[1] == "table" {
 				m.TableName = strings.Trim(parts[2], "`")
 			}
-		case "primary", "unique", "key", "index", "constraint", "foreign":
-			// Ignore constraint and index lines.
+		case "primary", "unique", "key", "index", "constraint", "foreign", "engine", "default", "collate", "comment":
+			// Ignore constraint, index, and table-level configuration lines.
 			continue
 		default:
 			// Process lines that define fields.
 			if strings.HasPrefix(line, ")") || strings.HasPrefix(line, "(") {
+				continue
+			}
+
+			// Skip lines that contain table-level configurations
+			if strings.Contains(line, "engine") || strings.Contains(line, "charset") || 
+			   strings.Contains(line, "collate") && !strings.Contains(line, "`") {
 				continue
 			}
 

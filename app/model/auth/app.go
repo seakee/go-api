@@ -21,8 +21,6 @@ type App struct {
 	RedirectUri string `gorm:"column:redirect_uri;type:varchar(500);default:NULL" json:"redirect_uri"` // 授权后重定向的回调链接地址
 	Description string `gorm:"column:description;type:text" json:"description"`                        // 描述信息
 	Status      int8   `gorm:"column:status;not null;default:0" json:"status"`                         // 0表示未开通；1表示正常使用；2表示已被禁用
-	Default     any    `gorm:"column:default;default:CHARSET" json:"default"`
-	Collate     any    `gorm:"column:collate" json:"collate"`
 
 	// Query conditions for chaining methods
 	queryCondition interface{}   `gorm:"-" json:"-"`
