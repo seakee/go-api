@@ -165,11 +165,18 @@ func (a *App) Delete(ctx context.Context, db *gorm.DB) error {
 // Returns:
 //   - error: error if the update operation fails, otherwise nil.
 func (a *App) Updates(ctx context.Context, db *gorm.DB, updates map[string]interface{}) error {
-	query := db.WithContext(ctx).Model(a)
+	// Build query with context and explicitly set the model
+	query := db.WithContext(ctx).Model(&App{})
 
 	// Apply Where conditions if set
 	if a.queryCondition != nil {
 		query = query.Where(a.queryCondition, a.queryArgs...)
+	} else if a.ID > 0 {
+		// Use ID for updates if available (most common case)
+		query = query.Where("id = ?", a.ID)
+	} else {
+		// Use struct fields as condition
+		query = query.Where(a)
 	}
 
 	// Perform the database update operation with context.
@@ -220,7 +227,7 @@ func (a *App) ListByArgs(ctx context.Context, db *gorm.DB, query interface{}, ar
 	var apps []App
 
 	// Perform the database query with context.
-	if err := db.WithContext(ctx).Where(query, args...).Order("id desc").Find(&apps).Error; err != nil {
+	if err := db.WithContext(ctx).Model(&App{}).Where(query, args...).Order("id desc").Find(&apps).Error; err != nil {
 		return nil, fmt.Errorf("list by args failed: %w", err)
 	}
 
