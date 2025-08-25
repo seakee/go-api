@@ -52,7 +52,7 @@ type handler struct {
 func (h *handler) Start(ctx context.Context) error {
 	// TODO: Uncomment and implement telegram worker
 	// Initialize telegram worker with required dependencies
-	// telegramWork, err := telegram.NewWorker(h.logger, h.redis["dudu"], h.db["dudu"], h.notify, h.traceID)
+	// telegramWork, err := telegram.NewWorker(h.logger, h.redis["go-api"], h.db["go-api"], h.notify, h.traceID)
 	// if err != nil {
 	//     return err
 	// }
