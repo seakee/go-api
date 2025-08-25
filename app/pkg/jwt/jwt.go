@@ -48,7 +48,7 @@ func GenerateAppToken(App *auth.App, expireTime time.Duration) (token string, er
 	claims := ServerClaims{
 		ID:      App.ID,
 		AppName: App.AppName,
-		AppID:   App.AppID,
+		AppID:   App.AppId,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expTime),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
