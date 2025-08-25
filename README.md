@@ -406,6 +406,7 @@ make docker-run   # Run Docker container
 
 Complete project documentation is available in the `docs/` directory:
 
+- **[📚 GitHub Wiki](https://github.com/seakee/go-api/wiki)** - Complete wiki with all documentation
 - **[Wiki Home](docs/Home.md)** - Documentation index and quick navigation
 - **[Architecture Design](docs/Architecture-Design.md)** - System architecture and design patterns
 - **[Development Guide](docs/Development-Guide.md)** - Detailed development workflow

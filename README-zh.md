@@ -388,6 +388,7 @@ make docker-run   # 运行Docker容器
 
 完整的项目文档位于 `docs/` 目录：
 
+- **[📚 GitHub Wiki](https://github.com/seakee/go-api/wiki)** - 完整的Wiki文档
 - **[Wiki首页](docs/Home.md)** - 文档索引和快速导航
 - **[架构设计](docs/Architecture-Design.md)** - 系统架构和设计模式
 - **[开发指南](docs/Development-Guide.md)** - 详细的开发工作流程
