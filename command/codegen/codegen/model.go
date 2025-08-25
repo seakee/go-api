@@ -162,8 +162,8 @@ func (m *Model) parseSQL(sql string) error {
 			}
 
 			// Skip lines that contain table-level configurations
-			if strings.Contains(line, "engine") || strings.Contains(line, "charset") || 
-			   strings.Contains(line, "collate") && !strings.Contains(line, "`") {
+			if strings.Contains(line, "engine") || strings.Contains(line, "charset") ||
+				strings.Contains(line, "collate") && !strings.Contains(line, "`") {
 				continue
 			}
 
@@ -741,11 +741,18 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Delete(ctx context.Context, d
 // Returns:
 // 	- error: error if the update operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Updates(ctx context.Context, db *gorm.DB, updates map[string]interface{}) error {
-	query := db.WithContext(ctx).Model({{.StructNameFirstLetter}})
+	// Build query with context and explicitly set the model
+	query := db.WithContext(ctx).Model(&{{.StructName}}{})
 	
 	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
+	} else if {{.StructNameFirstLetter}}.ID > 0 {
+		// Use ID for updates if available (most common case)
+		query = query.Where("id = ?", {{.StructNameFirstLetter}}.ID)
+	} else {
+		// Use struct fields as condition
+		query = query.Where({{.StructNameFirstLetter}})
 	}
 
 	// Perform the database update operation with context.
@@ -796,7 +803,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) ListByArgs(ctx context.Contex
 	var {{.StructNameLower}}s []{{.StructName}}
 
 	// Perform the database query with context.
-	if err := db.WithContext(ctx).Where(query, args...).Order("id desc").Find(&{{.StructNameLower}}s).Error; err != nil {
+	if err := db.WithContext(ctx).Model(&{{.StructName}}{}).Where(query, args...).Order("id desc").Find(&{{.StructNameLower}}s).Error; err != nil {
 		return nil, fmt.Errorf("list by args failed: %w", err)
 	}
 
