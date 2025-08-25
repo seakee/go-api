@@ -1,5 +1,5 @@
-# Use Go 1.22 as the base image for the build stage
-FROM golang:1.22-alpine as builder
+# Use Go 1.24 as the base image for the build stage
+FROM golang:1.24-alpine as builder
 
 # Set maintainer information
 LABEL maintainer="Seakee <seakee23@gmail.com>"
