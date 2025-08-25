@@ -4,14 +4,16 @@
 # This script creates a new project based on the go-api template
 #
 # Usage:
-#   ./generate.sh [project-name] [version]
-#   ./generate.sh my-project v1.0.0
-#   ./generate.sh my-project        # Uses latest main branch
+#   ./generate.sh [project-name] [version] [module-name]
+#   ./generate.sh my-project v1.0.0 github.com/myuser/my-project
+#   ./generate.sh my-project main my-project
+#   ./generate.sh my-project        # Uses latest main branch, module name = project name
 #   ./generate.sh                   # Creates 'go-api' project from main branch
 #
 # Parameters:
 #   $1 - Project name (optional, default: "go-api")
 #   $2 - Version/branch (optional, default: "main")
+#   $3 - Module name (optional, default: project-name)
 
 set -e  # Exit on any error
 set -u  # Exit on undefined variables
@@ -28,11 +30,11 @@ NC='\033[0m' # No Color
 projectDir=""
 cleanup_required=false
 
-# Print colored output
-print_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+# Print colored output with aligned formatting
+print_info() { printf "${BLUE}%-9s${NC} %s\n" "[INFO]" "$1"; }
+print_success() { printf "${GREEN}%-9s${NC} %s\n" "[SUCCESS]" "$1"; }
+print_warning() { printf "${YELLOW}%-9s${NC} %s\n" "[WARNING]" "$1"; }
+print_error() { printf "${RED}%-9s${NC} %s\n" "[ERROR]" "$1"; }
 
 # Cleanup function for error handling
 cleanup() {
@@ -52,17 +54,25 @@ trap cleanup EXIT INT TERM
 
 # Show usage information
 show_usage() {
-    echo "Usage: $0 [project-name] [version]"
+    echo "Usage: $0 [project-name] [version] [module-name]"
     echo ""
     echo "Parameters:"
     echo "  project-name  Name of the new project (default: go-api)"
     echo "  version       Git branch or tag to use (default: main)"
+    echo "  module-name   Go module name (default: project-name)"
     echo ""
     echo "Examples:"
-    echo "  $0                           # Create 'go-api' from main branch"
-    echo "  $0 my-awesome-api            # Create 'my-awesome-api' from main branch"
-    echo "  $0 my-api v1.2.0             # Create 'my-api' from tag v1.2.0"
-    echo "  $0 my-api feature/new-auth   # Create 'my-api' from feature branch"
+    echo "  $0                                              # Create 'go-api' from main"
+    echo "  $0 my-awesome-api                               # Module: my-awesome-api"
+    echo "  $0 my-api v1.2.0                                # Module: my-api"
+    echo "  $0 my-api main github.com/myuser/my-api         # Custom module name"
+    echo "  $0 my-api main my-api                           # Simple module name"
+    echo ""
+    echo "Module name guidelines:"
+    echo "  - For local use only: use simple name (e.g., 'my-project')"
+    echo "  - For GitHub: use 'github.com/username/project-name'"
+    echo "  - For other Git hosts: use full repository URL"
+    echo "  - Must be valid Go module name (lowercase, no spaces)"
     echo ""
     echo "Requirements:"
     echo "  - Git 2.0+"
@@ -101,6 +111,34 @@ validate_project_name() {
             print_info "Operation cancelled."
             exit 0
         fi
+    fi
+}
+
+# Validate Go module name
+validate_module_name() {
+    local module_name="$1"
+
+    # Check if module name is empty
+    if [[ -z "$module_name" ]]; then
+        print_error "Module name cannot be empty"
+        exit 1
+    fi
+
+    # Check if module name contains invalid characters for Go modules
+    if [[ "$module_name" =~ [A-Z[:space:]] ]]; then
+        print_error "Invalid module name: '$module_name'"
+        print_error "Go module names should be lowercase and contain no spaces"
+        print_error "Valid examples: my-project, github.com/user/project"
+        exit 1
+    fi
+
+    # Warn about local vs remote module names
+    if [[ "$module_name" != *"."* ]]; then
+        print_info "Using local module name: '$module_name'"
+        print_info "This is suitable for local development or internal use"
+    else
+        print_info "Using remote module name: '$module_name'"
+        print_info "Make sure this matches your intended repository location"
     fi
 }
 
@@ -373,8 +411,63 @@ clone_repository() {
     return 1
 }
 
+# Cross-platform file replacement using grep and sed
+replace_in_files_cross_platform() {
+    local old_pattern="$1"
+    local new_replacement="$2"
+    local project_dir="$3"
+
+    print_info "Searching for files containing: $old_pattern"
+
+    # Find files containing the pattern
+    local files_to_update=()
+    while IFS= read -r -d '' file; do
+        files_to_update+=("$file")
+    done < <(find "$project_dir" -type f \( -name "*.go" -o -name "*.mod" -o -name "*.md" -o -name "Dockerfile" -o -name "Makefile" -o -name "*.yml" -o -name "*.yaml" -o -name "*.json" \) -exec grep -l "$old_pattern" {} + -print0 2>/dev/null || true)
+
+    local file_count=${#files_to_update[@]}
+
+    if [[ $file_count -eq 0 ]]; then
+        print_warning "No files found containing: $old_pattern"
+        return 0
+    fi
+
+    print_info "Found $file_count files to update"
+
+    local updated_count=0
+    local failed_count=0
+
+    # Update each file
+    for file in "${files_to_update[@]}"; do
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            # macOS - use temporary file approach to avoid issues
+            local temp_file="${file}.tmp.$$"
+            if sed "s|$old_pattern|$new_replacement|g" "$file" > "$temp_file" && mv "$temp_file" "$file"; then
+                ((updated_count++))
+            else
+                ((failed_count++))
+                print_error "Failed to update: $file"
+                [[ -f "$temp_file" ]] && rm -f "$temp_file"
+            fi
+        else
+            # Linux and others
+            if sed -i "s|$old_pattern|$new_replacement|g" "$file"; then
+                ((updated_count++))
+            else
+                ((failed_count++))
+                print_error "Failed to update: $file"
+            fi
+        fi
+    done
+
+    print_success "Updated $updated_count files successfully"
+    if [[ $failed_count -gt 0 ]]; then
+        print_warning "$failed_count files failed to update"
+    fi
+}
+
 # Parse command line arguments
-if [[ "$1" == "-h" || "$1" == "--help" ]] 2>/dev/null; then
+if [[ $# -gt 0 && ("$1" == "-h" || "$1" == "--help") ]]; then
     show_usage
     exit 0
 fi
@@ -384,7 +477,7 @@ projectName="go-api"
 projectVersion="main"
 
 # Parse arguments with better validation
-if [[ $# -gt 2 ]]; then
+if [[ $# -gt 3 ]]; then
     print_error "Too many arguments. Use --help for usage information."
     exit 1
 fi
@@ -398,6 +491,15 @@ if [[ -n "${2:-}" ]]; then
     projectVersion="$2"
 fi
 
+# Determine module name
+if [[ -n "${3:-}" ]]; then
+    moduleName="$3"
+    validate_module_name "$moduleName"
+else
+    moduleName="$projectName"
+    validate_module_name "$moduleName"
+fi
+
 # Pre-flight checks
 print_info "Starting pre-flight checks..."
 check_file_permissions
@@ -406,6 +508,7 @@ check_network
 
 print_info "Creating project: $projectName"
 print_info "Using version: $projectVersion"
+print_info "Module name: $moduleName"
 
 # Set the project directory path
 projectDir="$(pwd)/$projectName"
@@ -456,16 +559,304 @@ if [[ ! -d "$projectDir" || ! -f "$projectDir/go.mod" ]]; then
     exit 1
 fi
 
-# Remove the .git directory to detach from the original repository
-print_info "Removing original git history..."
-rm -rf "$projectDir"/.git
+# Clean up git-related files and references
+cleanup_git_references() {
+    local project_dir="$1"
+    local module_name="$2"
+
+    print_info "Cleaning up git-related files and references..."
+
+    # Remove git-related files
+    local git_files=(
+        ".git"
+        ".gitignore.bak"
+        ".github"
+        "CONTRIBUTING.md"
+        "CHANGELOG.md"
+    )
+
+    for git_file in "${git_files[@]}"; do
+        if [[ -e "$project_dir/$git_file" ]]; then
+            print_info "Removing: $git_file"
+            rm -rf "$project_dir/$git_file"
+        fi
+    done
+
+    # Clean up any remaining git references in files - use the module name
+    print_info "Cleaning remaining git references in files"
+    replace_in_files_cross_platform "github.com/seakee/go-api" "$module_name" "$project_dir"
+
+    # Clean up author and contributor information
+    local readme_file="$project_dir/README.md"
+    if [[ -f "$readme_file" ]]; then
+        print_info "Cleaning README.md author information"
+        # Create a clean README template
+        cat > "$readme_file" << EOF
+# $projectName
+
+A high-performance Go API project based on the go-api framework. Built for rapid development of scalable backend services with enterprise-grade features.
+
+## Description
+
+This project provides a robust foundation for building RESTful APIs with Go, featuring:
+- Clean architecture with layered design (Model-Repository-Service-Controller)
+- Built-in dependency injection and configuration management
+- Multi-database support (MySQL, MongoDB)
+- JWT authentication and middleware system
+- Internationalization (i18n) support
+- High-performance logging with structured output
+- Docker containerization support
+
+## Features
+
+- **🚀 High Performance**: Built on Gin framework for optimal performance
+- **🏗️ Clean Architecture**: Follows MVC + Repository pattern with proper separation of concerns
+- **🔧 Configuration Management**: Environment-based configuration with JSON files
+- **🔐 Authentication**: JWT-based authentication with middleware support
+- **🗄️ Multi-Database**: Support for MySQL and MongoDB with GORM and qmgo
+- **📝 Logging**: Structured logging with Zap for high performance
+- **🌍 Internationalization**: Built-in i18n support for multiple languages
+- **⏰ Task Scheduling**: Built-in job scheduler for background tasks
+- **📡 Message Queue**: Kafka consumer support for event-driven architecture
+- **🐳 Docker Ready**: Complete Docker setup for development and production
+- **🛠️ Code Generation**: SQL-based code generation tools for rapid development
+
+## Installation
+
+### Prerequisites
+
+- Go 1.24 or higher
+- Git
+- Make (optional, but recommended)
+- Docker (optional, for containerized development)
+
+### Setup
+
+\`\`\`bash
+git clone <your-repository-url>
+cd $projectName
+go mod download
+\`\`\`
+
+## Usage
+
+### Development
+
+\`\`\`bash
+# Start development server
+make run
+
+# Or run directly
+go run main.go
+\`\`\`
+
+### Build
+
+\`\`\`bash
+# Build for current platform
+make build
+
+# Build Docker image
+make docker-build
+\`\`\`
+
+### Test
+
+\`\`\`bash
+# Run tests
+make test
+
+# Run tests with coverage
+go test -cover ./...
+\`\`\`
+
+### Docker
+
+\`\`\`bash
+# Run with Docker
+make docker-run
+
+# Or manually
+docker run -p 8080:8080 -v \$(pwd)/bin/configs:/bin/configs $projectName
+\`\`\`
+
+## Configuration
+
+Update configuration files in \`bin/configs/\` directory according to your environment:
+
+- \`dev.json\` - Development environment
+- \`prod.json\` - Production environment
+
+Example configuration structure:
+
+\`\`\`json
+{
+  "system": {
+    "name": "$projectName",
+    "port": 8080,
+    "debug": true
+  },
+  "database": {
+    "mysql": {
+      "host": "localhost",
+      "port": 3306,
+      "database": "your_db",
+      "username": "your_user",
+      "password": "your_password"
+    }
+  }
+}
+\`\`\`
+
+## Project Structure
+
+\`\`\`
+$projectName/
+├── app/
+│   ├── config/          # Configuration management
+│   ├── http/           # HTTP layer (controllers, middleware, routes)
+│   ├── model/          # Data models
+│   ├── repository/     # Data access layer
+│   ├── service/        # Business logic layer
+│   ├── job/            # Background jobs
+│   └── pkg/            # Shared packages
+├── bootstrap/          # Application bootstrap
+├── bin/
+│   ├── configs/        # Configuration files
+│   ├── data/          # SQL files and data
+│   └── lang/          # Language files for i18n
+├── command/           # CLI commands and code generation
+├── scripts/           # Utility scripts
+├── Dockerfile         # Docker configuration
+├── Makefile          # Build automation
+└── main.go           # Application entry point
+\`\`\`
+
+## API Documentation
+
+The API follows RESTful conventions. Key endpoints:
+
+- \`GET /health\` - Health check
+- \`POST /auth/login\` - User authentication
+- \`GET /api/v1/*\` - API endpoints (requires authentication)
+
+For detailed API documentation, run the server and visit the documentation endpoint or refer to the API specification files.
+
+## Development Guide
+
+### Adding New Features
+
+1. **Model**: Define data structures in \`app/model/\`
+2. **Repository**: Implement data access in \`app/repository/\`
+3. **Service**: Add business logic in \`app/service/\`
+4. **Controller**: Create HTTP handlers in \`app/http/controller/\`
+5. **Routes**: Register routes in \`app/http/router/\`
+
+### Code Generation
+
+Use the built-in code generator to scaffold new modules:
+
+\`\`\`bash
+# Generate model and repository from SQL
+go run command/codegen/handler.go -sql=your_table.sql
+\`\`\`
+
+### Testing
+
+Write tests following Go conventions:
+
+\`\`\`bash
+# Create test files
+touch app/service/your_service_test.go
+
+# Run specific tests
+go test ./app/service/
+\`\`\`
+
+## Contributing
+
+We welcome contributions! Please follow these guidelines:
+
+1. **Fork** the repository
+2. **Create** a feature branch: \`git checkout -b feature/amazing-feature\`
+3. **Follow** the coding standards:
+   - Use \`gofmt\` and \`goimports\` for formatting
+   - Write comprehensive tests
+   - Follow the established architecture patterns
+   - Add proper documentation and comments
+4. **Commit** your changes: \`git commit -m 'feat: add amazing feature'\`
+5. **Push** to the branch: \`git push origin feature/amazing-feature\`
+6. **Submit** a pull request
+
+### Code Standards
+
+- Follow Go best practices and conventions
+- Maintain the layered architecture (Model → Repository → Service → Controller)
+- Use dependency injection patterns
+- Write comprehensive unit tests
+- Document all public functions and methods
+- Use conventional commit messages
+
+### Development Setup
+
+\`\`\`bash
+# Install development dependencies
+make dev-setup
+
+# Run code quality checks
+make lint
+make fmt
+
+# Run all tests
+make test-all
+\`\`\`
+
+## License
+
+This project is licensed under the [MIT License](LICENSE) - see the LICENSE file for details.
+
+## Support
+
+If you encounter any issues or have questions:
+
+1. Check the [documentation](docs/)
+2. Search existing [issues](../../issues)
+3. Create a new issue with detailed information
+4. Join our community discussions
+
+## Acknowledgments
+
+- Built with [go-api](https://github.com/seakee/go-api) framework
+- Powered by [Gin](https://gin-gonic.com/) web framework
+- Database integration with [GORM](https://gorm.io/)
+- Logging with [Zap](https://go.uber.org/zap)
+
+---
+
+**Happy coding! 🚀**
+EOF
+    fi
+
+    # Clean up any license files that reference the original project
+    local license_file="$project_dir/LICENSE"
+    if [[ -f "$license_file" ]]; then
+        print_info "Removing original LICENSE file"
+        rm -f "$license_file"
+        print_info "Please add your own LICENSE file"
+    fi
+
+    print_success "Git references cleaned up"
+}
+
+# Clean up git references before processing
+cleanup_git_references "$projectDir" "$moduleName"
 
 # Only replace if project name is different from 'go-api'
 if [[ "$projectName" != "go-api" ]]; then
     print_info "Updating import paths and project references..."
 
     # Use the simplified approach - replace 'go-api' with new project name
-    replace_in_files "go-api" "$projectName" "$projectDir"
+    replace_in_files_cross_platform "go-api" "$projectName" "$projectDir"
 
     print_success "Project references updated."
 else
@@ -503,15 +894,35 @@ fi
 print_success "Git repository initialized successfully."
 
 # Handle Go module operations
-if [[ "$projectName" != "go-api" ]]; then
+if [[ "$projectName" != "go-api" || "$moduleName" != "go-api" ]]; then
     print_info "Cleaning up Go module dependencies..."
 
     # Check if go.mod exists
     if [[ ! -f "go.mod" ]]; then
         print_warning "go.mod not found, initializing new module..."
-        if ! go mod init "$projectName"; then
+        if ! go mod init "$moduleName"; then
             print_error "Failed to initialize Go module"
             exit 1
+        fi
+    else
+        # Update existing go.mod file
+        print_info "Updating go.mod module name..."
+        temp_file="go.mod.tmp.$$"
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            if sed "s|module github.com/seakee/go-api|module $moduleName|g" go.mod > "$temp_file" && mv "$temp_file" go.mod; then
+                print_success "go.mod updated successfully"
+            else
+                print_error "Failed to update go.mod"
+                [[ -f "$temp_file" ]] && rm -f "$temp_file"
+                exit 1
+            fi
+        else
+            if sed -i "s|module github.com/seakee/go-api|module $moduleName|g" go.mod; then
+                print_success "go.mod updated successfully"
+            else
+                print_error "Failed to update go.mod"
+                exit 1
+            fi
         fi
     fi
 
@@ -528,6 +939,8 @@ if [[ "$projectName" != "go-api" ]]; then
     if ! go mod verify; then
         print_warning "Go module verification failed. You may need to review dependencies."
     fi
+else
+    print_info "Using default module configuration"
 fi
 
 # Final verification
@@ -542,6 +955,14 @@ cleanup_required=false  # Disable cleanup since project is complete
 print_success "Project '$projectName' created successfully!"
 print_info ""
 print_info "Project location: $projectDir"
+print_info ""
+print_info "Clean project created with:"
+print_info "  ✓ Fresh git repository (no original history)"
+print_info "  ✓ Updated import paths and references"
+print_info "  ✓ Go module name: $moduleName"
+print_info "  ✓ Clean README.md template"
+print_info "  ✓ Original LICENSE removed (add your own)"
+print_info ""
 print_info "Project structure:"
 if command -v tree &> /dev/null; then
     tree -L 2 -a "$projectDir" | head -20
@@ -552,14 +973,21 @@ fi
 print_info ""
 print_info "Next steps:"
 print_info "  1. cd $projectName"
-print_info "  2. Review and update configuration files in bin/configs/"
+print_info "  2. Add your LICENSE file"
 print_info "  3. Update README.md with your project details"
-print_info "  4. Set up your remote git repository:"
+print_info "  4. Review and update configuration files in bin/configs/"
+print_info "  5. Set up your remote git repository:"
 print_info "     git remote add origin <your-repository-url>"
 print_info "     git push -u origin main"
-print_info "  5. Build and run the project:"
+print_info "  6. Build and run the project:"
 print_info "     go mod download  # Download dependencies"
 print_info "     make run         # Or: go run main.go"
+print_info ""
+print_info "Important:"
+print_info "  📝 Update README.md with your project information"
+print_info "  📄 Add appropriate LICENSE file"
+print_info "  ⚙️  Configure bin/configs/ files for your environment"
+print_info "  🔗 Set up your own git remote repository"
 print_info ""
 print_info "Useful commands:"
 print_info "  make help        # Show available make targets"
