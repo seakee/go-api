@@ -1,246 +1,430 @@
-# Go-API
+# Go-API Framework
 
-`go-api` is a simple, powerful, and high-performance Go framework for building web APIs.
+**Languages**: [English](README.md) | [中文](README-zh.md)
 
-## Features
+---
 
-- **Router**: Fast and flexible router with middleware support.
-- **Dependency Injection**: Built-in dependency injection container.
-- **Configuration**: Unified configuration management.
-- **Logger**: High-performance logging library.
-- **Database**: Integration with GORM for database operations.
-- **Validation**: Parameter validation using struct tags.
-- **Task Scheduling**: Built-in support for task scheduling.
-- **Code Generation**: Automatically generate code based on SQL files.
+### Overview
 
-## Quick Start
+`go-api` is a powerful, high-performance Go framework designed for building enterprise-grade web APIs. It provides a complete solution with layered architecture, dependency injection, comprehensive middleware support, and automatic code generation capabilities.
 
-Execute the following commands in the terminal to get the installation script:
+### Key Features
 
-```shell
-# Download the initialization script
-curl -O --location --request GET 'https://raw.githubusercontent.com/seakee/go-api/main/scripts/generate.sh' && chmod +x generate.sh
+- 🚀 **High Performance**: Built on Gin framework with optimized logging and database connections
+- 🏗️ **Layered Architecture**: Strict Model → Repository → Service → Controller pattern
+- 🔧 **Dependency Injection**: Clean architecture with proper separation of concerns
+- ⚙️ **Configuration Management**: Multi-environment support with JSON-based configuration
+- 📝 **Advanced Logging**: Structured logging with Zap for high performance
+- 🗄️ **Multi-Database Support**: MySQL (GORM) and MongoDB (qmgo) integration
+- 🔐 **JWT Authentication**: Built-in app authentication with JWT tokens
+- 🌐 **Internationalization**: Multi-language support (zh-CN, en-US)
+- 📊 **Middleware System**: CORS, authentication, request logging, and custom middleware
+- ⚡ **Code Generation**: Automatic model and repository generation from SQL files
+- 🔄 **Task Scheduling**: Built-in job scheduling system
+- 📨 **Message Queue**: Kafka producer/consumer support
+- 🚨 **Monitoring**: Panic recovery with notification integration
+- 🐳 **Docker Ready**: Complete Docker support with optimized images
 
-# Initialize the project
-# Example: ./generate.sh cms-api v1.0.0
-./generate.sh projectName projectVersion
+### Quick Start
+
+#### Method 1: Using Project Generator Script
+
+```bash
+# Download the project generator
+curl -O https://raw.githubusercontent.com/seakee/go-api/main/scripts/generate.sh
+chmod +x generate.sh
+
+# Generate a new project
+./generate.sh my-api-project v1.0.0
+cd my-api-project
+
+# Install dependencies and run
+go mod tidy
+make run
 ```
 
-## Directory Structure
+#### Method 2: Clone and Customize
 
-```shell
-go-api
-├── README.md                       # Project documentation
-├── app                             # Application business logic directory
-│   ├── command                     # Commands directory
-│   │   └── handler.go              # Command handler entry
-│   │   └── codegen                 # Code generation related directory
-│   │       └── handler.go          # Code generation handler
-│   │       └── codegen             # Code generation toolkit
-│   │           └── model.go        # Model generation related code
-│   ├── config.go                   # System configuration
-│   ├── consumer                    # Kafka consumer handlers directory
-│   │   └── handler.go              # Kafka consumer handler entry
-│   ├── http                        # HTTP related directory
-│   │   ├── controller              # Controllers directory
-│   │   │   └── auth                # Authorization related controllers
-│   │   │       ├── app.go          # Application access controller
-│   │   │       ├── handler.go      # Controller handler
-│   │   │       └── jwt.go          # JWT related controller
-│   │   ├── middleware              # HTTP middleware directory
-│   │   │   ├── check_app_auth.go   # Authentication middleware
-│   │   │   ├── cors.go             # CORS middleware
-│   │   │   ├── handler.go          # Middleware entry
-│   │   │   └── requset_logger.go   # Request logger middleware
-│   │   └── router                  # Routing directory
-│   │       ├── auth.go             # Authentication related routes
-│   │       └── handler.go          # Routing entry point
-│   ├── model                       # Database models directory
-│   │   └── auth                    # Authorization related models
-│   │       └── app.go              # Application access model
-│   ├── pkg                         # Business packages directory
-│   │   ├── e                       # Error handling directory
-│   │   │   └── code.go             # Interface business response codes
-│   │   └── jwt                     # JWT related directory
-│   │       └── jwt.go              # JWT related code
-│   ├── repository                  # Data access layer directory
-│   │   └── auth                    # Authorization related repositories
-│   │       └── app.go              # Application access repository
-│   └── service                     # Data service layer directory
-│       └── handler.go              # Service layer handler
-├── bin                             # Build directory
-│   ├── configs                     # Project configurations
-│   │   ├── dev.json                # Development environment config
-│   │   ├── local.json              # Local environment config
-│   │   └── prod.json               # Production environment config
-│   ├── data                        # Project data directory
-│   │   └── sql                     # SQL scripts directory
-│   │       └── auth_app.sql        # Authorization application SQL file
-│   └── lang                        # Internationalization directory
-│       ├── en-US.json              # English language file
-│       └── zh-CN.json              # Chinese language file
-├── bootstrap                       # Startup directory
-│   ├── app.go                      # Application startup logic
-│   ├── http.go                     # HTTP service startup
-│   └── kafka.go                    # Kafka service startup
-├── go.mod                          # Go module definition
-├── go.sum                          # Go module dependencies
-├── main.go                         # Main entry point
-├── scripts                         # Scripts directory
-│   └── generate.sh                 # API project generation script
-└── vendor                          # Dependency packages directory
+```bash
+# Clone the repository
+git clone https://github.com/seakee/go-api.git
+cd go-api
+
+# Install dependencies
+go mod download
+
+# Copy and configure local settings
+cp bin/configs/local.json.default bin/configs/local.json
+# Edit bin/configs/local.json with your database settings
+
+# Run the application
+make run
 ```
 
-- `README.md`: Project readme
-- `app`: Application business directory
-    - `config.go`: Project configuration file, if the current environment is local, it directly loads the config file `./bin/configs/local.json`. For other environments, it loads the corresponding environment configuration from the configuration center.
-    - `http`: HTTP application directory, handles HTTP-related business
-        - `controller`: Controller directory, place HTTP related business here. Each independent business should have its own directory, e.g., `controller/admin` for admin business.
-        - `middleware`: HTTP middleware, all middleware should implement the `Middleware` interface in `handler.go`
-            - `check_app_auth.go`: Intercepts HTTP requests for server-side API and performs authentication.
-            - `cors.go`: CORS middleware
-            - `handler.go`: Defines all HTTP middleware interfaces and serves as the middleware initialization entry.
-            - `requset_logger.go`: Request logger middleware, records request-related information. By default, it is enabled in non-prod environments. Developers can use it in the routes where needed.
-        - `router`: Router directory, define HTTP request routes here.
-    - `model`: Database models, defines data objects and basic database operation methods.
-    - `pkg`: Business package, used to place some packages used by the project itself
-        - `e`: Error-related definitions directory
-            - `code.go`: Defines error codes as int constants, used with internationalization.
-        - `jwt`: JWT-related handling
-    - `repository`: Data repository, processes database data
-    - `service`: Data service layer
-- `command`: Custom commands used in the project, define interfaces in handler.go, and then implement the interfaces
-- `bin`: Project compilation and running directory
-    - `configs`: Project configuration directory
-    - `data`: Project storage directory, used to place data needed during project runtime
-    - `lang`: Internationalization language directory
-- `bootstrap`: Project startup directory, loads related logic on startup
-- `vendor`: External dependencies referenced by the project
+### Architecture Overview
 
-## Development Guide
-
-### How to Connect to a New Database
-
-To connect to a new database, add the new database configuration in the `bin/configs/{env}.json` file under `databases` and set `enable` to `true`, for example:
-
-```json
-"databases": [
-  {
-    "enable": true,
-    "db_type": "mysql",
-    "db_host": "127.0.0.1:3306",
-    "db_name": "mysql-db2",
-    "db_username": "db_username",
-    "db_password": "db_password",
-    "db_max_idle_conn": 10,
-    "db_max_open_conn": 50,
-    "db_max_lifetime": 3
-  },
-  {
-    "enable": true,
-    "db_type": "mysql",
-    "db_host": "127.0.0.1:3306",
-    "db_name": "mysql-db2",
-    "db_username": "db_username",
-    "db_password": "db_password",
-    "db_max_idle_conn": 10,
-    "db_max_open_conn": 50,
-    "db_max_lifetime": 3
-  },
-  {
-    "enable": true,
-    "db_type": "mongo",
-    "db_name": "db_name",
-    "db_host": "mongodb://db_host:27017",
-    "db_username": "go-api",
-    "db_password": "db_username",
-    "db_max_idle_conn": 10,
-    "db_max_open_conn": 50,
-    "auth_mechanism": "SCRAM-SHA-1",
-    "db_max_lifetime": 1
-  },
-  {
-    "enable": true,
-    "db_type": "mongo-db2",
-    "db_name": "db_name",
-    "db_host": "url"
-  }
-],
+```
+go-api/
+├── app/                             # Application layer
+│   ├── config/                     # Configuration management
+│   │   └── config.go              # Config loader and structures
+│   ├── http/                       # HTTP layer
+│   │   ├── controller/             # HTTP controllers
+│   │   │   ├── auth/               # Authentication controllers
+│   │   │   │   ├── app.go          # App CRUD operations
+│   │   │   │   ├── handler.go      # Auth handler interface
+│   │   │   │   └── jwt.go          # JWT token operations
+│   │   │   └── base.go             # Base controller
+│   │   ├── middleware/             # HTTP middleware
+│   │   │   ├── check_app_auth.go   # JWT authentication
+│   │   │   ├── cors.go             # CORS handling
+│   │   │   ├── handler.go          # Middleware interface
+│   │   │   ├── request_logger.go   # Request logging
+│   │   │   └── set_trace_id.go     # Trace ID injection
+│   │   ├── router/                 # Route definitions
+│   │   │   ├── external/           # External API routes
+│   │   │   │   └── service/        # External service routes
+│   │   │   │       └── auth/       # Auth endpoints
+│   │   │   ├── internal/           # Internal API routes
+│   │   │   │   └── service/        # Internal service routes
+│   │   │   │       └── auth/       # Auth endpoints
+│   │   │   └── handler.go          # Main router
+│   │   └── context.go              # HTTP context wrapper
+│   ├── model/                      # Data models
+│   │   └── auth/                   # Authentication models
+│   │       ├── app.go              # App model (MySQL)
+│   │       └── app_mgo.go          # App model (MongoDB)
+│   ├── pkg/                        # Utility packages
+│   │   ├── e/                      # Error codes
+│   │   │   └── code.go             # Error code definitions
+│   │   ├── jwt/                    # JWT utilities
+│   │   │   └── jwt.go              # JWT generation/parsing
+│   │   ├── schedule/               # Task scheduling
+│   │   │   └── schedule.go         # Job scheduler
+│   │   └── trace/                  # Distributed tracing
+│   │       └── trace.go            # Trace ID generation
+│   ├── repository/                 # Data access layer
+│   │   └── auth/                   # Auth repository
+│   │       └── app.go              # App repository
+│   ├── service/                    # Business logic layer
+│   │   └── auth/                   # Auth services
+│   │       └── app.go              # App service
+│   └── worker/                     # Background workers
+│       └── handler.go              # Worker handler
+├── bin/                            # Runtime resources
+│   ├── configs/                    # Configuration files
+│   │   ├── dev.json                # Development config
+│   │   ├── local.json              # Local config
+│   │   └── prod.json               # Production config
+│   ├── data/                       # Data files
+│   │   └── sql/                    # SQL scripts
+│   │       └── auth_app.sql        # App table schema
+│   └── lang/                       # Language files
+│       ├── en-US.json              # English messages
+│       └── zh-CN.json              # Chinese messages
+├── bootstrap/                      # Application bootstrap
+│   ├── app.go                      # Main app initialization
+│   ├── database.go                 # Database setup
+│   ├── http.go                     # HTTP server setup
+│   ├── kafka.go                    # Kafka setup
+│   └── schedule.go                 # Scheduler setup
+├── command/                        # CLI commands
+│   └── codegen/                    # Code generator
+│       ├── codegen/                # Generator logic
+│       ├── handler.go              # CLI handler
+│       └── README.md               # Generator docs
+├── scripts/                        # Utility scripts
+│   └── generate.sh                 # Project generator
+├── docs/                           # Project documentation
+│   ├── Home.md                     # Wiki homepage (English)
+│   ├── Home-zh.md                  # Wiki homepage (Chinese)
+│   ├── Architecture-Design.md      # Architecture documentation
+│   ├── Development-Guide.md        # Development workflow guide
+│   ├── API-Documentation.md        # Complete API reference
+│   ├── Code-Generator-Guide.md     # Code generation tool guide
+│   └── Deployment-Guide.md         # Production deployment guide
+├── Dockerfile                      # Docker configuration
+├── Makefile                        # Build automation
+├── docker-compose.yml              # Docker Compose
+├── go.mod                          # Go module
+├── go.sum                          # Dependencies
+└── main.go                         # Application entry point
 ```
 
-### How to Add a New Middleware
+### Core Components
 
-To add a new HTTP middleware, first define the middleware method in the `Middleware` interface in the `app/http/middleware/handler.go` file, and implement this method. Note: the return value of the middleware must be `gin.HandlerFunc`.
+#### 1. Layered Architecture
 
-```go
-type Middleware interface {
-   CheckAppAuth() gin.HandlerFunc
+The framework follows a strict 4-layer architecture:
 
-   // ImNewMiddleware: New middleware
-   ImNewMiddleware() gin.HandlerFunc
-}
+- **Model Layer**: Data structures and database operations
+- **Repository Layer**: Data access abstraction with interfaces
+- **Service Layer**: Business logic implementation
+- **Controller Layer**: HTTP request handling and response formatting
 
-func (m middleware) ImNewMiddleware() gin.HandlerFunc {
-   return func(c *gin.Context) {
-       c.Next()
-   }
-}
-```
+#### 2. Configuration Management
 
-### How to Handle Errors
-
-To facilitate debugging and tracking errors, all possible errors should be returned to the outermost layer and then returned through the interface.
-
-```go
-func a() error {
-   err := errors.New("this is an error")
-   
-   return err
-}
-
-func (h handler) returnFunc() gin.HandlerFunc {
-   return func(c *gin.Context) {
-      
-      err := a()
-      
-      h.i18n.JSON(c, e.SUCCESS, nil, err)
-   }
-}
-```
-
-### How to Handle Internationalization
-
-#### Q: Where to define internationalization status codes?
-
-A: Status codes should be defined in the `app/pkg/e/code.go` file. You can see that some basic status codes have already been defined in this file, `-1~1000` for basic status codes, `10001~10999` for server-side status codes, and `11000~11050` for authorization status codes. It is recommended that new status codes should be added in increments of 1000, following the already defined status codes. The defined status code constants should be as short and clear as possible.
-
-#### Q: Where to define internationalization languages?
-
-A: Define in the `bin/lang` directory, with language package names similar to `zh-CN.json`.
-
-#### Q: How to use variables in internationalization languages?
-
-A: Define the translation language in the internationalization language package. For example:
+Supports multiple environments with JSON-based configuration:
 
 ```json
 {
-  "1000": "Hello, %s! Your account is: %s"
+  "system": {
+    "name": "go-api",
+    "run_mode": "debug",
+    "http_port": ":8080",
+    "jwt_secret": "your-secret-key"
+  },
+  "databases": [
+    {
+      "enable": true,
+      "db_type": "mysql",
+      "db_name": "go-api",
+      "db_host": "localhost:3306"
+    }
+  ]
 }
 ```
+
+#### 3. Middleware System
+
+Built-in middleware for common functionality:
+
+- **Authentication**: JWT-based app authentication
+- **CORS**: Cross-origin resource sharing
+- **Logging**: Structured request/response logging
+- **Trace ID**: Distributed tracing support
+- **Panic Recovery**: Automatic panic recovery with notifications
+
+#### 4. Authentication System
+
+Complete JWT-based authentication:
+
+```bash
+# Get JWT token
+curl -X POST http://localhost:8080/go-api/external/service/auth/token \
+  -d "app_id=your_app_id&app_secret=your_app_secret"
+
+# Use token in requests
+curl -H "Authorization: your_jwt_token" \
+  http://localhost:8080/go-api/external/service/auth/app
+```
+
+### Development Guide
+
+#### Adding a New Controller
+
+1. Create controller structure:
 
 ```go
-func (h handler) returnFunc() gin.HandlerFunc {
-   return func(c *gin.Context) {
+// app/http/controller/user/handler.go
+package user
 
-      errCode := 1000
+import (
+    "github.com/gin-gonic/gin"
+    "github.com/seakee/go-api/app/http"
+)
 
-      h.i18n.JSON(c, errCode, i18n.Data{
-         Params: []string{"Seakee", "12345678"},
-         Data:   "test",
-      }, nil)
-   }
+type Handler interface {
+    Create() gin.HandlerFunc
+    GetByID() gin.HandlerFunc
+}
+
+type handler struct {
+    controller.BaseController
+    service userService.UserService
+}
+
+func NewHandler(appCtx *http.Context) Handler {
+    return &handler{
+        BaseController: controller.BaseController{
+            AppCtx: appCtx,
+            Logger: appCtx.Logger,
+            Redis:  appCtx.Redis["go-api"],
+            I18n:   appCtx.I18n,
+        },
+        service: userService.NewUserService(appCtx.MysqlDB["go-api"], appCtx.Redis["go-api"]),
+    }
 }
 ```
-## License
 
-`go-api` is released under the MIT License. See the [LICENSE](LICENSE) file for more details.
+2. Register routes:
+
+```go
+// app/http/router/external/service/user/user.go
+func RegisterRoutes(api *gin.RouterGroup, ctx *http.Context) {
+    userHandler := user.NewHandler(ctx)
+    {
+        api.POST("user", ctx.Middleware.CheckAppAuth(), userHandler.Create())
+        api.GET("user/:id", userHandler.GetByID())
+    }
+}
+```
+
+#### Adding Middleware
+
+1. Define in interface:
+
+```go
+// app/http/middleware/handler.go
+type Middleware interface {
+    CheckAppAuth() gin.HandlerFunc
+    YourNewMiddleware() gin.HandlerFunc  // Add this
+}
+```
+
+2. Implement middleware:
+
+```go
+// app/http/middleware/your_middleware.go
+func (m middleware) YourNewMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Your middleware logic
+        c.Next()
+    }
+}
+```
+
+#### Code Generation
+
+Generate models and repositories from SQL files:
+
+```bash
+# Generate from SQL file
+go run ./command/codegen/handler.go -name user_table
+
+# Generate all SQL files
+go run ./command/codegen/handler.go
+
+# Custom paths
+go run ./command/codegen/handler.go -sql custom/sql -model custom/model
+```
+
+SQL file format:
+```sql
+CREATE TABLE `users` (
+    `id` int NOT NULL AUTO_INCREMENT COMMENT 'Primary Key',
+    `username` varchar(50) NOT NULL COMMENT 'Username',
+    `email` varchar(100) NOT NULL COMMENT 'Email Address',
+    `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT 'Status',
+    `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='User Information';
+```
+
+### API Endpoints
+
+#### External APIs (Public)
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/go-api/external/service/auth/token` | Get JWT token | No |
+| POST | `/go-api/external/service/auth/app` | Create app | Yes |
+| GET | `/go-api/external/service/ping` | Health check | No |
+
+#### Internal APIs (Private)
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/go-api/internal/service/auth/token` | Get JWT token | No |
+| POST | `/go-api/internal/service/auth/app` | Create app | Yes |
+| GET | `/go-api/internal/service/ping` | Health check | No |
+
+### Docker Deployment
+
+#### Using Docker Compose
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  go-api:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./bin/configs:/bin/configs
+      - ./bin/logs:/bin/logs
+    environment:
+      - RUN_ENV=prod
+      - APP_NAME=go-api
+    depends_on:
+      - mysql
+      - redis
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: go-api
+    ports:
+      - "3306:3306"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+```
+
+#### Build and Run
+
+```bash
+# Build Docker image
+make docker-build
+
+# Run with Docker Compose
+docker-compose up -d
+
+# Run single container
+make docker-run
+```
+
+### Build Commands
+
+```bash
+# Development
+make run          # Run application
+make test         # Run tests
+make fmt          # Format code
+make all          # fmt + test + build
+
+# Production
+make build        # Build binary
+make docker-build # Build Docker image
+make docker-run   # Run Docker container
+```
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|----------|
+| `RUN_ENV` | Runtime environment | `local` |
+| `APP_NAME` | Application name | `go-api` |
+| `CONFIG_DIR` | Configuration directory | `./bin/configs` |
+
+### Documentation
+
+Complete project documentation is available in the `docs/` directory:
+
+- **[Wiki Home](docs/Home.md)** - Documentation index and quick navigation
+- **[Architecture Design](docs/Architecture-Design.md)** - System architecture and design patterns
+- **[Development Guide](docs/Development-Guide.md)** - Detailed development workflow
+- **[API Documentation](docs/API-Documentation.md)** - Complete API reference
+- **[Code Generator](docs/Code-Generator-Guide.md)** - Code generation tool guide
+- **[Deployment Guide](docs/Deployment-Guide.md)** - Production deployment guide
+- **[Makefile Usage](docs/Makefile-Usage.md)** - Build automation and development tools
+- **[go-api.sh Usage](docs/go-api.sh-Usage.md)** - Shell script alternative to Makefile
+
+### Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/new-feature`
+3. Commit changes: `git commit -am 'Add new feature'`
+4. Push to branch: `git push origin feature/new-feature`
+5. Submit a Pull Request
+
+See [Contributing Guide](CONTRIBUTING.md) for more details.
+
+### License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
