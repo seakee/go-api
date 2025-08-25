@@ -6,6 +6,7 @@ package auth
 
 import (
 	"context"
+
 	"github.com/seakee/go-api/app/model/auth"
 	"github.com/sk-pkg/redis"
 	"gorm.io/gorm"
@@ -30,6 +31,12 @@ type AppRepo interface {
 
 	// GetByID retrieves a app by its ID.
 	GetByID(ctx context.Context, id uint) (*auth.App, error)
+
+	// ExistAppByName checks if an app exists by its name.
+	ExistAppByName(ctx context.Context, appName string) (bool, error)
+
+	// GetAppByCredentials retrieves an app by app_id and app_secret.
+	GetAppByCredentials(ctx context.Context, appID, appSecret string) (*auth.App, error)
 }
 
 // appRepo implements the AppRepo interface.
@@ -169,4 +176,37 @@ func (r *appRepo) Delete(ctx context.Context, id uint) error {
 //   - error: error if the query fails, otherwise nil.
 func (r *appRepo) List(ctx context.Context, app *auth.App) ([]auth.App, error) {
 	return app.List(ctx, r.db)
+}
+
+// ExistAppByName checks if an app exists by its name.
+//
+// Parameters:
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - appName: string the name of the app to check.
+//
+// Returns:
+//   - bool: true if the app exists, false otherwise.
+//   - error: error if the query fails, otherwise nil.
+func (r *appRepo) ExistAppByName(ctx context.Context, appName string) (bool, error) {
+	app := &auth.App{}
+	result, err := app.Where("app_name = ?", appName).First(ctx, r.db)
+	if err != nil {
+		return false, err
+	}
+	return result != nil, nil
+}
+
+// GetAppByCredentials retrieves an app by app_id and app_secret.
+//
+// Parameters:
+//   - ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
+//   - appID: string the app ID.
+//   - appSecret: string the app secret.
+//
+// Returns:
+//   - *auth.App: pointer to the retrieved app, or nil if not found.
+//   - error: error if the query fails, otherwise nil.
+func (r *appRepo) GetAppByCredentials(ctx context.Context, appID, appSecret string) (*auth.App, error) {
+	app := &auth.App{}
+	return app.Where("app_id = ? AND app_secret = ? AND status = ?", appID, appSecret, 1).First(ctx, r.db)
 }
