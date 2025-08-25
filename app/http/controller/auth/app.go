@@ -6,9 +6,8 @@ package auth
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/seakee/go-api/app/model/auth"
 	"github.com/seakee/go-api/app/pkg/e"
-	"github.com/sk-pkg/util"
+	authService "github.com/seakee/go-api/app/service/auth"
 )
 
 // StoreAppReqParams defines the structure for storing app request parameters.
@@ -28,50 +27,44 @@ type StoreAppRepData struct {
 //
 // This function performs the following steps:
 // 1. Binds the JSON request to StoreAppReqParams.
-// 2. Checks if an app with the given name already exists.
-// 3. If the app doesn't exist, creates a new app with generated AppID and AppSecret.
-// 4. Returns the newly created AppID and AppSecret.
+// 2. Calls the service layer to handle the business logic.
+// 3. Returns the result or error response.
 //
 // Returns:
 //   - gin.HandlerFunc: A function that handles the HTTP request for creating an app.
 func (h handler) Create() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var params *StoreAppReqParams
+		var params StoreAppReqParams
 		var err error
-		var exists bool
 		var data *StoreAppRepData
 
 		errCode := e.InvalidParams
-
 		ctx := h.Context(c)
 
 		// Bind JSON request to StoreAppReqParams
 		if err = c.ShouldBindJSON(&params); err == nil {
-			// Check if app already exists
-			exists, err = h.repo.ExistAppByName(ctx, params.AppName)
-			errCode = e.ServerAppAlreadyExists
-			if !exists {
-				// Create new app
-				app := &auth.App{
-					AppName:     params.AppName,
-					AppID:       "go-api-" + util.RandLowStr(8),
-					AppSecret:   util.RandUpStr(32),
-					RedirectUri: params.RedirectUri,
-					Description: params.Description,
-					Status:      1,
+			// Convert to service params
+			serviceParams := &authService.CreateAppParams{
+				AppName:     params.AppName,
+				Description: params.Description,
+				RedirectUri: params.RedirectUri,
+			}
+
+			// Call service layer
+			result, err := h.service.CreateApp(ctx, serviceParams)
+			if err != nil {
+				// Handle specific business errors
+				if err.Error() == "app with this name already exists" {
+					errCode = e.ServerAppAlreadyExists
+				} else {
+					errCode = e.BUSY
 				}
-
-				// Save app to repository
-				_, err = h.repo.Create(ctx, app)
-				errCode = e.BUSY
-				if err == nil {
-					errCode = e.SUCCESS
-
-					// Prepare response data
-					data = &StoreAppRepData{
-						AppID:     app.AppID,
-						AppSecret: app.AppSecret,
-					}
+			} else {
+				errCode = e.SUCCESS
+				// Prepare response data
+				data = &StoreAppRepData{
+					AppID:     result.AppID,
+					AppSecret: result.AppSecret,
 				}
 			}
 		}

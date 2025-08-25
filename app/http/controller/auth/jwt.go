@@ -18,7 +18,7 @@ const appTokenExpireTime = 168 * 3600
 //
 // This function handles the following steps:
 // 1. Extracts app_id and app_secret from the POST form data.
-// 2. Validates the app credentials against the database.
+// 2. Validates the app credentials using the service layer.
 // 3. Generates a JWT token if the credentials are valid.
 // 4. Returns the token and its expiration time, or an error if any step fails.
 //
@@ -41,14 +41,23 @@ func (h handler) GetToken() gin.HandlerFunc {
 
 		errCode = e.InvalidParams
 		if appID != "" && appSecret != "" {
-			// Attempt to retrieve the app from the database
-			app, err = h.repo.GetApp(h.Context(c), &auth.App{AppID: appID, AppSecret: appSecret, Status: 1})
-			errCode = e.ServerAppNotFound
-			if err == nil {
+			// Use service layer to validate credentials
+			app, err = h.service.GetTokenByCredentials(h.Context(c), appID, appSecret)
+			if err != nil {
+				// Handle specific service errors
+				if err.Error() == "invalid credentials" {
+					errCode = e.ServerAppNotFound
+				} else if err.Error() == "app is not active" {
+					errCode = e.ServerAppNotFound
+				} else {
+					errCode = e.ServerAuthorizationFail
+				}
+			} else {
 				// Generate a JWT token for the app
 				token, err = jwt.GenerateAppToken(app, appTokenExpireTime)
-				errCode = e.ServerAuthorizationFail
-				if err == nil {
+				if err != nil {
+					errCode = e.ServerAuthorizationFail
+				} else {
 					errCode = e.SUCCESS
 					data["token"] = token
 					data["expires_in"] = appTokenExpireTime

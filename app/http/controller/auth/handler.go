@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/seakee/go-api/app/http"
 	"github.com/seakee/go-api/app/http/controller"
-	"github.com/seakee/go-api/app/repository/auth"
+	authService "github.com/seakee/go-api/app/service/auth"
 )
 
 // Handler interface defines the methods that should be implemented by the auth handler.
@@ -22,7 +22,7 @@ type Handler interface {
 // handler struct implements the Handler interface.
 type handler struct {
 	controller.BaseController
-	repo auth.Repo
+	service authService.AppService
 }
 
 // i is a dummy method to satisfy the Handler interface.
@@ -40,9 +40,9 @@ func NewHandler(appCtx *http.Context) Handler {
 		BaseController: controller.BaseController{
 			AppCtx: appCtx,
 			Logger: appCtx.Logger,
-			Redis:  appCtx.Redis["dudu"],
+			Redis:  appCtx.Redis["go-api"],
 			I18n:   appCtx.I18n,
 		},
-		repo: auth.NewAppRepo(appCtx.MysqlDB["go-api"], appCtx.Redis["go-api"]),
+		service: authService.NewAppService(appCtx.MysqlDB["go-api"], appCtx.Redis["go-api"]),
 	}
 }
