@@ -6,7 +6,7 @@
 
 ## 前提条件
 
-- Go 1.22 或更高版本
+- Go 1.24 或更高版本
 - Docker 和 Docker Compose（可选）
 - MySQL 8.0+ 或 MongoDB 4.4+
 - Redis 6.0+

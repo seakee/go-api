@@ -8,7 +8,7 @@
 
 ### Prerequisites
 
-- Go 1.22 or higher
+- Go 1.24 or higher
 - Docker and Docker Compose (optional)
 - MySQL 8.0+ or MongoDB 4.4+
 - Redis 6.0+

@@ -51,7 +51,7 @@ We welcome feature suggestions! Please:
 
 #### Prerequisites
 
-- Go 1.22 or higher
+- Go 1.24 or higher
 - Docker and Docker Compose
 - Make
 - Git
@@ -428,7 +428,7 @@ Contributors are recognized in:
 
 #### 前提条件
 
-- Go 1.22或更高版本
+- Go 1.24或更高版本
 - Docker和Docker Compose
 - Make
 - Git
