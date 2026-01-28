@@ -7,9 +7,12 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/qiniu/qmgo"
 	"github.com/seakee/go-api/app/pkg/trace"
+	"github.com/seakee/go-api/app/service/system"
 	"github.com/sk-pkg/i18n"
 	"github.com/sk-pkg/logger"
+	"github.com/sk-pkg/notify"
 	"github.com/sk-pkg/redis"
 	"gorm.io/gorm"
 )
@@ -20,15 +23,19 @@ type Middleware interface {
 	Cors() gin.HandlerFunc
 	RequestLogger() gin.HandlerFunc
 	SetTraceID() gin.HandlerFunc
+	CheckAdminAuth() gin.HandlerFunc
+	SaveOperationRecord() gin.HandlerFunc
 }
 
 // middleware struct implements the Middleware interface.
 type middleware struct {
-	logger  *logger.Manager
-	i18n    *i18n.Manager
-	db      map[string]*gorm.DB
-	redis   map[string]*redis.Manager
-	traceID *trace.ID
+	logger                 *logger.Manager
+	i18n                   *i18n.Manager
+	db                     map[string]*gorm.DB
+	redis                  map[string]*redis.Manager
+	traceID                *trace.ID
+	authService            system.AuthService
+	operationRecordService system.OperationRecordService
 }
 
 // New creates and returns a new Middleware instance.
@@ -42,6 +49,13 @@ type middleware struct {
 //
 // Returns:
 //   - Middleware: A new Middleware instance.
-func New(logger *logger.Manager, i18n *i18n.Manager, db map[string]*gorm.DB, redis map[string]*redis.Manager, traceID *trace.ID) Middleware {
-	return &middleware{logger: logger, i18n: i18n, db: db, redis: redis, traceID: traceID}
+func New(logger *logger.Manager, i18n *i18n.Manager, db map[string]*gorm.DB, redis map[string]*redis.Manager, mgoDB map[string]*qmgo.Database, traceID *trace.ID, notify *notify.Manager) Middleware {
+	return &middleware{logger: logger,
+		i18n:                   i18n,
+		db:                     db,
+		redis:                  redis,
+		traceID:                traceID,
+		authService:            system.NewAuthService(redis["go-api"], logger, db["go-api"], notify),
+		operationRecordService: system.NewOperationRecordService(redis["go-api"], logger, mgoDB["go-api"]),
+	}
 }
