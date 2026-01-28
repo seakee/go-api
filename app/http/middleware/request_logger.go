@@ -7,6 +7,7 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"time"
 
@@ -54,6 +55,16 @@ func (m middleware) RequestLogger() gin.HandlerFunc {
 		// Create context with trace ID
 		ctx := context.WithValue(context.Background(), logger.TraceIDKey, traceID.(string))
 
+		var body any
+		b := make(map[string]any)
+
+		err := json.Unmarshal(buf, &b)
+		if err == nil {
+			body = b
+		} else {
+			body = string(buf)
+		}
+
 		// Log request details
 		m.logger.Info(ctx,
 			"Request Logs",
@@ -62,7 +73,7 @@ func (m middleware) RequestLogger() gin.HandlerFunc {
 			zap.String("IP", clientIP),
 			zap.String("Method", reqMethod),
 			zap.String("RequestPath", reqUri),
-			zap.Any("body", string(buf)),
+			zap.Any("body", body),
 		)
 	}
 }
