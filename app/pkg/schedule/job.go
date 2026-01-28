@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"runtime/debug"
 	"time"
 
 	"github.com/seakee/go-api/app/pkg/trace"
@@ -209,7 +210,10 @@ func (j *Job) runWithRecover() {
 	defer func() {
 		// Recover from panic and log the error
 		if r := recover(); r != nil {
-			j.Logger.Error(ctx, "job has a panic error", zap.Any("error", r))
+			j.Logger.Error(ctx, "job has a panic error",
+				zap.String("error", fmt.Sprintf("%v", r)),
+				zap.String("stack", string(debug.Stack())),
+			)
 		}
 	}()
 
