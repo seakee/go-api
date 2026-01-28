@@ -20,4 +20,36 @@ type SysConfig struct {
 	JwtSecret    string        `json:"jwt_secret"`    // JWT secret for authentication
 	TokenExpire  time.Duration `json:"token_expire"`  // JWT token expiration time (in seconds)
 	Env          string        `json:"env"`           // Runtime environment
+	Admin        AdminConfig   `json:"admin"`         // Admin configuration
+}
+
+// AdminConfig defines admin configuration options.
+type AdminConfig struct {
+	SafeCodeExpireIn int         `json:"safe_code_expire_in"`
+	TokenExpireIn    int64       `json:"token_expire_in"`
+	JwtSecret        string      `json:"jwt_secret"`
+	Oauth            OauthConfig `json:"oauth"`
+}
+
+// OauthConfig defines OAuth provider configuration options.
+type OauthConfig struct {
+	RedirectURL string `json:"redirect_url"`
+	Feishu      Feishu `json:"feishu"`
+	Wechat      Wechat `json:"wechat"`
+}
+
+// Feishu defines Feishu (Lark) OAuth configuration.
+type Feishu struct {
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	OauthURL     string `json:"oauth_url"`
+}
+
+// Wechat defines WeChat Work (Enterprise WeChat) OAuth configuration.
+type Wechat struct {
+	CorpID     string `json:"corp_id"`     // Corporation ID
+	AgentID    string `json:"agent_id"`    // Application ID
+	CorpSecret string `json:"corp_secret"` // Application secret
+	OauthURL   string `json:"oauth_url"`   // URL for obtaining user authorization code
+	ProxyURL   string `json:"proxy_url"`   // Proxy URL
 }
