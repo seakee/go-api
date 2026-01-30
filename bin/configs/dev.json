@@ -21,12 +21,15 @@
       "enable": true,
       "db_type": "mysql",
       "db_name": "db_name",
-      "db_host": "db_host:3306",
+      "db_host": "db_host",
+      "db_port": 3306,
       "db_username": "db_username",
       "db_password": "db_password",
+      "charset": "utf8mb4",
       "db_max_idle_conn": 10,
       "db_max_open_conn": 50,
-      "db_max_lifetime": 3
+      "conn_max_lifetime": 3,
+      "conn_max_idle_time": 1
     },
     {
       "enable": false,
@@ -38,7 +41,8 @@
       "db_max_idle_conn": 10,
       "db_max_open_conn": 50,
       "auth_mechanism": "SCRAM-SHA-1",
-      "db_max_lifetime": 1
+      "conn_max_lifetime": 1,
+      "conn_max_idle_time": 1
     }
   ],
   "cache": {
