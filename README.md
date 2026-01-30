@@ -15,7 +15,7 @@
 - 🔧 **Dependency Injection**: Clean architecture with proper separation of concerns
 - ⚙️ **Configuration Management**: Multi-environment support with JSON-based configuration
 - 📝 **Advanced Logging**: Structured logging with Zap for high performance
-- 🗄️ **Multi-Database Support**: MySQL (GORM) and MongoDB (qmgo) integration
+- 🗄️ **Multi-Database Support**: MySQL, PostgreSQL, SQLite, SQL Server, ClickHouse (via xdb/GORM) and MongoDB (qmgo)
 - 🔐 **JWT Authentication**: Built-in app authentication with JWT tokens
 - 🌐 **Internationalization**: Multi-language support (zh-CN, en-US)
 - 📊 **Middleware System**: CORS, authentication, request logging, and custom middleware
@@ -179,7 +179,10 @@ Supports multiple environments with JSON-based configuration:
       "enable": true,
       "db_type": "mysql",
       "db_name": "go-api",
-      "db_host": "localhost:3306"
+      "db_host": "localhost",
+      "db_port": 3306,
+      "charset": "utf8mb4",
+      "conn_max_lifetime": 3
     }
   ]
 }

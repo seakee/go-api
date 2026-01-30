@@ -15,7 +15,7 @@
 - 🔧 **依赖注入**: 清晰的架构和适当的关注点分离
 - ⚙️ **配置管理**: 多环境支持，基于 JSON 的配置
 - 📝 **高级日志**: 使用 Zap 的结构化日志，高性能
-- 🗄️ **多数据库支持**: MySQL (GORM) 和 MongoDB (qmgo) 集成
+- 🗄️ **多数据库支持**: MySQL、PostgreSQL、SQLite、SQL Server、ClickHouse (通过 xdb/GORM) 和 MongoDB (qmgo)
 - 🔐 **JWT 认证**: 内置应用认证和 JWT token
 - 🌐 **国际化**: 多语言支持（中文、英文）
 - 📊 **中间件系统**: CORS、认证、请求日志和自定义中间件
@@ -180,7 +180,10 @@ go-api/
       "enable": true,
       "db_type": "mysql",
       "db_name": "go-api",
-      "db_host": "localhost:3306"
+      "db_host": "localhost",
+      "db_port": 3306,
+      "charset": "utf8mb4",
+      "conn_max_lifetime": 3
     }
   ]
 }

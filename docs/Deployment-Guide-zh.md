@@ -45,12 +45,15 @@ cp bin/configs/local.json.default bin/configs/prod.json
       "enable": true,
       "db_type": "mysql",
       "db_name": "go_api_prod",
-      "db_host": "mysql:3306",
+      "db_host": "mysql",
+      "db_port": 3306,
       "db_username": "go_api_user",
       "db_password": "安全密码在这里",
+      "charset": "utf8mb4",
       "db_max_idle_conn": 10,
       "db_max_open_conn": 100,
-      "db_max_lifetime": 3
+      "conn_max_lifetime": 3,
+      "conn_max_idle_time": 1
     }
   ],
   "redis": [
