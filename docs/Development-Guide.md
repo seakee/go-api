@@ -79,12 +79,15 @@ Create environment-specific configuration files:
       "enable": true,
       "db_type": "mysql",
       "db_name": "go-api",
-      "db_host": "localhost:3306",
+      "db_host": "localhost",
+      "db_port": 3306,
       "db_username": "root",
       "db_password": "password",
+      "charset": "utf8mb4",
       "db_max_idle_conn": 10,
       "db_max_open_conn": 50,
-      "db_max_lifetime": 3
+      "conn_max_lifetime": 3,
+      "conn_max_idle_time": 1
     }
   ],
   "redis": [
