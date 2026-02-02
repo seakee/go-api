@@ -121,7 +121,7 @@ func NewAppService(db *gorm.DB, redis *redis.Manager) AppService {
 // Controller layer injects dependencies into service
 func NewHandler(appCtx *http.Context) Handler {
     return &handler{
-        service: authService.NewAppService(appCtx.MysqlDB["go-api"], appCtx.Redis["go-api"]),
+        service: authService.NewAppService(appCtx.SqlDB["go-api"], appCtx.Redis["go-api"]),
     }
 }
 ```
