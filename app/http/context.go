@@ -36,10 +36,14 @@ type Context struct {
 // Returns:
 //   - context.Context: A new context with the trace ID added.
 func (ctx *Context) Context(c *gin.Context) context.Context {
+	reqCtx := c.Request.Context()
 	traceID, ok := c.Get("trace_id")
 	if !ok {
-		return context.Background()
+		return reqCtx
+	}
+	if reqCtx.Value(logger.TraceIDKey) != nil {
+		return reqCtx
 	}
 
-	return context.WithValue(context.Background(), logger.TraceIDKey, traceID.(string))
+	return context.WithValue(reqCtx, logger.TraceIDKey, traceID.(string))
 }

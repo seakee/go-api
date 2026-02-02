@@ -5,7 +5,10 @@
 package middleware
 
 import (
+	"context"
+
 	"github.com/gin-gonic/gin"
+	"github.com/sk-pkg/logger"
 )
 
 // SetTraceID returns a Gin middleware function that sets a trace ID for each request.
@@ -28,6 +31,13 @@ func (m middleware) SetTraceID() gin.HandlerFunc {
 
 		// Set trace ID in Gin context
 		c.Set("trace_id", traceID)
+
+		// Bind trace ID to request context for downstream usage
+		reqCtx := c.Request.Context()
+		if reqCtx.Value(logger.TraceIDKey) == nil {
+			reqCtx = context.WithValue(reqCtx, logger.TraceIDKey, traceID)
+			c.Request = c.Request.WithContext(reqCtx)
+		}
 
 		// Continue to the next middleware or handler
 		c.Next()

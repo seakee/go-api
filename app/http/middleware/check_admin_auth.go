@@ -41,12 +41,17 @@ func (m middleware) CheckAdminAuth() gin.HandlerFunc {
 }
 
 func getContext(c *gin.Context) context.Context {
+	reqCtx := c.Request.Context()
 	traceID, ok := c.Get("trace_id")
 	if !ok {
-		return context.Background()
+		return reqCtx
 	}
 
-	return context.WithValue(context.Background(), logger.TraceIDKey, traceID.(string))
+	if reqCtx.Value(logger.TraceIDKey) != nil {
+		return reqCtx
+	}
+
+	return context.WithValue(reqCtx, logger.TraceIDKey, traceID.(string))
 }
 
 func (m middleware) checkAdminAuthToken(c *gin.Context) (userID uint, errCode int, err error) {

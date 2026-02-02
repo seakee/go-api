@@ -53,7 +53,10 @@ func (m middleware) RequestLogger() gin.HandlerFunc {
 		}
 
 		// Create context with trace ID
-		ctx := context.WithValue(context.Background(), logger.TraceIDKey, traceID.(string))
+		ctx := c.Request.Context()
+		if ctx.Value(logger.TraceIDKey) == nil {
+			ctx = context.WithValue(ctx, logger.TraceIDKey, traceID.(string))
+		}
 
 		var body any
 		b := make(map[string]any)

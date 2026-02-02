@@ -27,7 +27,7 @@ func (m middleware) SaveOperationRecord() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		startTime := time.Now()
 		traceID := m.getOrCreateTraceID(c)
-		ctx := context.WithValue(context.Background(), logger.TraceIDKey, traceID)
+		ctx := context.WithValue(c.Request.Context(), logger.TraceIDKey, traceID)
 
 		params := m.getRequestParams(c)
 		writer := newResponseBodyWriter(c.Writer, m.logger)
