@@ -43,5 +43,4 @@ const (
 	InvalidIPOrCIDR                = 11039
 	OauthTypeNotSupport            = 11040
 	InvalidOauthState              = 11041
-	DockmonLogNotFound             = 11042
 )
