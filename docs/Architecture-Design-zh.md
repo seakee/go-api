@@ -121,7 +121,7 @@ func NewAppService(db *gorm.DB, redis *redis.Manager) AppService {
 // 控制器层将依赖注入到服务中
 func NewHandler(appCtx *http.Context) Handler {
     return &handler{
-        service: authService.NewAppService(appCtx.MysqlDB["go-api"], appCtx.Redis["go-api"]),
+        service: authService.NewAppService(appCtx.SqlDB["go-api"], appCtx.Redis["go-api"]),
     }
 }
 ```

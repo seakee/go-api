@@ -116,7 +116,7 @@ func (a *App) initXDB(ctx context.Context, db config.Database) error {
 		d = d.Debug()
 	}
 
-	a.MysqlDB[db.DbName] = d
+	a.SqlDB[db.DbName] = d
 
 	a.Logger.Info(ctx, fmt.Sprintf("%s %s loaded successfully", db.DbType, db.DbName))
 

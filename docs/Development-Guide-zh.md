@@ -286,7 +286,7 @@ func NewHandler(appCtx *http.Context) Handler {
             Redis:  appCtx.Redis["go-api"],
             I18n:   appCtx.I18n,
         },
-        service: userService.NewUserService(appCtx.MysqlDB["go-api"], appCtx.Redis["go-api"]),
+        service: userService.NewUserService(appCtx.SqlDB["go-api"], appCtx.Redis["go-api"]),
     }
 }
 
