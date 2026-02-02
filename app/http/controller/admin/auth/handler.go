@@ -263,7 +263,7 @@ func NewHandler(appCtx *http.Context) Handler {
 		service: system.NewAuthService(
 			appCtx.Redis["go-api"],
 			appCtx.Logger,
-			appCtx.MysqlDB["go-api"],
+			appCtx.SqlDB["go-api"],
 			appCtx.Notify,
 		),
 	}

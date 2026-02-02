@@ -17,11 +17,11 @@ type Permission struct {
 	gorm.Model
 
 	Name        string `gorm:"column:name" json:"name"`
-	Type        string `gorm:"column:type" json:"type"`
+	Type        string `gorm:"column:perm_type" json:"type"`
 	Method      string `gorm:"column:method" json:"method"`
 	Path        string `gorm:"column:path" json:"path"`
 	Description string `gorm:"column:description" json:"description"`
-	Group       string `gorm:"column:group" json:"group"`
+	Group       string `gorm:"column:perm_group" json:"group"`
 
 	// Query condition fields for Where method
 	queryCondition string        `gorm:"-" json:"-"`

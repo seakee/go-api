@@ -161,6 +161,6 @@ func NewHandler(appCtx *http.Context) Handler {
 			Redis:  appCtx.Redis["go-api"],
 			I18n:   appCtx.I18n,
 		},
-		service: system.NewMenuService(appCtx.Redis["go-api"], appCtx.Logger, appCtx.MysqlDB["go-api"]),
+		service: system.NewMenuService(appCtx.Redis["go-api"], appCtx.Logger, appCtx.SqlDB["go-api"]),
 	}
 }

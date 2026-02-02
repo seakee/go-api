@@ -101,11 +101,11 @@ func (p permissionRepo) Update(ctx context.Context, permission *system.Permissio
 	}
 
 	if permission.Type != "" {
-		data["type"] = permission.Type
+		data["perm_type"] = permission.Type
 	}
 
 	if permission.Group != "" {
-		data["group"] = permission.Group
+		data["perm_group"] = permission.Group
 	}
 
 	if permission.Method != "" {
