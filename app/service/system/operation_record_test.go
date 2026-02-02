@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson/primitive"
-
 	"github.com/seakee/go-api/app/model/system"
+	"gorm.io/gorm"
 )
 
 // TestOperationRecordService_Create tests creating operation records.
@@ -85,20 +84,24 @@ func TestOperationRecordService_Paginate(t *testing.T) {
 			size: 10,
 			mockRecords: []system.OperationRecord{
 				{
-					ID:       primitive.NewObjectID(),
-					CreateAt: time.Now(),
-					IP:       "127.0.0.1",
-					Method:   "GET",
-					Path:     "/api/v1/users",
-					Status:   200,
+					Model: gorm.Model{
+						ID:        1,
+						CreatedAt: time.Now(),
+					},
+					IP:     "127.0.0.1",
+					Method: "GET",
+					Path:   "/api/v1/users",
+					Status: 200,
 				},
 				{
-					ID:       primitive.NewObjectID(),
-					CreateAt: time.Now(),
-					IP:       "127.0.0.1",
-					Method:   "POST",
-					Path:     "/api/v1/users",
-					Status:   201,
+					Model: gorm.Model{
+						ID:        2,
+						CreatedAt: time.Now(),
+					},
+					IP:     "127.0.0.1",
+					Method: "POST",
+					Path:   "/api/v1/users",
+					Status: 201,
 				},
 			},
 			mockTotal: 2,
@@ -171,7 +174,7 @@ func TestOperationRecordService_Interaction(t *testing.T) {
 	}{
 		{
 			name:     "get interaction detail successfully",
-			recordID: "507f1f77bcf86cd799439011",
+			recordID: "1",
 			mockResult: map[string]any{
 				"params": `{"id": 1}`,
 				"resp":   `{"code": 0, "message": "success"}`,
@@ -182,7 +185,7 @@ func TestOperationRecordService_Interaction(t *testing.T) {
 		},
 		{
 			name:       "record not found",
-			recordID:   "507f1f77bcf86cd799439999",
+			recordID:   "2",
 			mockResult: nil,
 			mockErr:    nil,
 			wantNil:    true,
@@ -190,7 +193,7 @@ func TestOperationRecordService_Interaction(t *testing.T) {
 		},
 		{
 			name:       "query error",
-			recordID:   "507f1f77bcf86cd799439011",
+			recordID:   "3",
 			mockResult: nil,
 			mockErr:    errors.New("database error"),
 			wantNil:    true,
