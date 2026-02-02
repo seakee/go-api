@@ -7,7 +7,6 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/qiniu/qmgo"
 	"github.com/seakee/go-api/app/pkg/trace"
 	"github.com/seakee/go-api/app/service/system"
 	"github.com/sk-pkg/i18n"
@@ -49,13 +48,13 @@ type middleware struct {
 //
 // Returns:
 //   - Middleware: A new Middleware instance.
-func New(logger *logger.Manager, i18n *i18n.Manager, db map[string]*gorm.DB, redis map[string]*redis.Manager, mgoDB map[string]*qmgo.Database, traceID *trace.ID, notify *notify.Manager) Middleware {
+func New(logger *logger.Manager, i18n *i18n.Manager, db map[string]*gorm.DB, redis map[string]*redis.Manager, traceID *trace.ID, notify *notify.Manager) Middleware {
 	return &middleware{logger: logger,
 		i18n:                   i18n,
 		db:                     db,
 		redis:                  redis,
 		traceID:                traceID,
 		authService:            system.NewAuthService(redis["go-api"], logger, db["go-api"], notify),
-		operationRecordService: system.NewOperationRecordService(redis["go-api"], logger, mgoDB["go-api"]),
+		operationRecordService: system.NewOperationRecordService(redis["go-api"], logger, db["go-api"]),
 	}
 }

@@ -2,11 +2,12 @@ package system
 
 import (
 	"context"
-	"github.com/qiniu/qmgo"
+
 	"github.com/seakee/go-api/app/model/system"
 	repo "github.com/seakee/go-api/app/repository/system"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
+	"gorm.io/gorm"
 )
 
 // OperationRecordService defines the operation record service interface.
@@ -35,7 +36,7 @@ func (o operationRecordService) Interaction(ctx context.Context, id string) (any
 }
 
 // NewOperationRecordService creates a new OperationRecordService instance.
-func NewOperationRecordService(redis *redis.Manager, logger *logger.Manager, db *qmgo.Database) OperationRecordService {
+func NewOperationRecordService(redis *redis.Manager, logger *logger.Manager, db *gorm.DB) OperationRecordService {
 	return &operationRecordService{
 		redis:      redis,
 		logger:     logger,

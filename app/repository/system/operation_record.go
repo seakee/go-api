@@ -3,12 +3,12 @@ package system
 import (
 	"context"
 	"encoding/json"
-	"github.com/sk-pkg/logger"
 	"net/url"
 	"strings"
 
-	"github.com/qiniu/qmgo"
 	"github.com/seakee/go-api/app/model/system"
+	"github.com/sk-pkg/logger"
+	"gorm.io/gorm"
 )
 
 const (
@@ -24,7 +24,7 @@ type OperationRecordRepo interface {
 }
 
 type operationRecordRepo struct {
-	db     *qmgo.Database
+	db     *gorm.DB
 	logger *logger.Manager
 }
 
@@ -39,6 +39,9 @@ func (opr *operationRecordRepo) Interaction(ctx context.Context, id string) (int
 	record, err := operationRecord.FindByID(ctx, opr.db, id)
 	if err != nil {
 		return nil, err
+	}
+	if record == nil {
+		return nil, nil
 	}
 
 	interaction := struct {
@@ -57,7 +60,7 @@ func (opr *operationRecordRepo) Create(ctx context.Context, operationRecord *sys
 }
 
 // NewOperationRecordRepo creates a new OperationRecordRepo instance.
-func NewOperationRecordRepo(db *qmgo.Database, logger *logger.Manager) OperationRecordRepo {
+func NewOperationRecordRepo(db *gorm.DB, logger *logger.Manager) OperationRecordRepo {
 	return &operationRecordRepo{db: db, logger: logger}
 }
 

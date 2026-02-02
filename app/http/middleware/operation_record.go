@@ -89,13 +89,13 @@ func (m middleware) createOperationRecord(c *gin.Context, params, traceID string
 		Path:         c.Request.URL.Path,
 		Agent:        c.Request.UserAgent(),
 		Params:       params,
-		CreateAt:     startTime,
 		Status:       c.Writer.Status(),
 		Latency:      time.Since(startTime).Seconds(),
 		Resp:         responseBody,
 		ErrorMessage: writer.errMessage,
 		TraceID:      traceID,
 	}
+	record.CreatedAt = startTime
 
 	if userID, exists := c.Get("user_id"); exists {
 		record.UserID = userID.(uint)

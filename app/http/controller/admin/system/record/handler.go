@@ -108,7 +108,7 @@ func NewHandler(appCtx *http.Context) Handler {
 		service: system.NewOperationRecordService(
 			appCtx.Redis["go-api"],
 			appCtx.Logger,
-			appCtx.MongoDB["go-api"],
+			appCtx.SqlDB["go-api"],
 		),
 	}
 }
