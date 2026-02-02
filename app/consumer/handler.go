@@ -17,7 +17,7 @@ import (
 type Core struct {
 	Logger        *logger.Manager
 	Redis         *redis.Manager
-	MysqlDB       map[string]*gorm.DB
+	SqlDB         map[string]*gorm.DB
 	KafkaConsumer *kafka.Manager
 }
 
@@ -57,7 +57,7 @@ func NewAutoSubmit(ctx context.Context, core *Core) {
 // messages from specific topics. It runs indefinitely until the context is cancelled.
 func New(ctx context.Context, core *Core) {
 	// Uncomment and initialize the handler if needed
-	// handler := test.New(core.Logger, core.Redis, core.MysqlDB["test"])
+	// handler := test.New(core.Logger, core.Redis, core.SqlDB["test"])
 
 	core.Logger.Info(ctx, "Kafka Consumer started successfully")
 	for {
