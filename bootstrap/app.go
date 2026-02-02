@@ -31,7 +31,7 @@ type App struct {
 	Logger        *logger.Manager
 	Redis         map[string]*redis.Manager
 	I18n          *i18n.Manager
-	MysqlDB       map[string]*gorm.DB
+	SqlDB         map[string]*gorm.DB
 	MongoDB       map[string]*qmgo.Database
 	Middleware    middleware.Middleware
 	KafkaProducer *kafka.Manager
@@ -52,7 +52,7 @@ type App struct {
 func NewApp(config *config.Config) (*App, error) {
 	a := &App{
 		Config:  config,
-		MysqlDB: map[string]*gorm.DB{},
+		SqlDB:   map[string]*gorm.DB{},
 		MongoDB: map[string]*qmgo.Database{},
 		Redis:   map[string]*redis.Manager{},
 	}

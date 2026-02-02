@@ -33,7 +33,7 @@ func (a *App) startHTTPServer(ctx context.Context) {
 		Logger:        a.Logger,
 		Redis:         a.Redis,
 		I18n:          a.I18n,
-		MysqlDB:       a.MysqlDB,
+		SqlDB:         a.SqlDB,
 		MongoDB:       a.MongoDB,
 		Middleware:    a.Middleware,
 		KafkaProducer: a.KafkaProducer,
@@ -117,6 +117,6 @@ func (a *App) loadPanicRobot(mux *gin.Engine) {
 // This function sets up the middleware with various components
 // such as logger, i18n, databases, and Redis.
 func (a *App) loadHTTPMiddlewares(ctx context.Context) {
-	a.Middleware = middleware.New(a.Logger, a.I18n, a.MysqlDB, a.Redis, a.MongoDB, a.TraceID, a.Notify)
+	a.Middleware = middleware.New(a.Logger, a.I18n, a.SqlDB, a.Redis, a.MongoDB, a.TraceID, a.Notify)
 	a.Logger.Info(ctx, "Middlewares loaded successfully")
 }

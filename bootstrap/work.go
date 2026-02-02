@@ -20,7 +20,7 @@ import (
 //   - ctx: context.Context - The context for worker execution and cancellation
 func (a *App) startWorker(ctx context.Context) {
 	// Initialize new worker instance with application dependencies
-	h := worker.New(a.Logger, a.Redis, a.MysqlDB, a.Notify, a.TraceID)
+	h := worker.New(a.Logger, a.Redis, a.SqlDB, a.Notify, a.TraceID)
 
 	// Start the worker and capture any startup errors
 	err := h.Start(ctx)

@@ -25,7 +25,7 @@ func (a *App) startKafkaConsumer(ctx context.Context) {
 		core := &consumer.Core{
 			Logger:        a.Logger,
 			Redis:         a.Redis["go-api"],
-			MysqlDB:       a.MysqlDB,
+			SqlDB:         a.SqlDB,
 			KafkaConsumer: a.KafkaConsumer,
 		}
 
