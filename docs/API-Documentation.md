@@ -101,6 +101,152 @@ curl -X POST http://localhost:8080/go-api/external/service/auth/app \
   }'
 ```
 
+#### Admin System Endpoints (Internal)
+
+System management APIs are mounted at `/go-api/internal/admin/system`.
+
+- Auth middleware: `CheckAdminAuth`
+- Token source: `Authorization: Bearer <admin-token>` or Cookie `admin-token`
+- Audit middleware: routes under `/go-api/internal/admin/*` are recorded by `SaveOperationRecord`
+
+##### Route Index
+
+| Module | Method | Path | Description |
+|------|------|------|------|
+| System | GET | `/go-api/internal/admin/system/ping` | System health check |
+| Menu | GET | `/go-api/internal/admin/system/menu/list` | Menu tree |
+| Menu | GET | `/go-api/internal/admin/system/menu` | Menu detail |
+| Menu | POST | `/go-api/internal/admin/system/menu` | Create menu |
+| Menu | PUT | `/go-api/internal/admin/system/menu` | Update menu |
+| Menu | DELETE | `/go-api/internal/admin/system/menu` | Delete menu |
+| Permission | GET | `/go-api/internal/admin/system/permission/available` | Unbound admin routes by HTTP method |
+| Permission | GET | `/go-api/internal/admin/system/permission/list` | Grouped permission list |
+| Permission | GET | `/go-api/internal/admin/system/permission/paginate` | Permission pagination |
+| Permission | GET | `/go-api/internal/admin/system/permission` | Permission detail |
+| Permission | POST | `/go-api/internal/admin/system/permission` | Create permission |
+| Permission | PUT | `/go-api/internal/admin/system/permission` | Update permission |
+| Permission | DELETE | `/go-api/internal/admin/system/permission` | Delete permission |
+| Role | GET | `/go-api/internal/admin/system/role/list` | Role list |
+| Role | GET | `/go-api/internal/admin/system/role/paginate` | Role pagination |
+| Role | GET | `/go-api/internal/admin/system/role` | Role detail |
+| Role | POST | `/go-api/internal/admin/system/role` | Create role |
+| Role | PUT | `/go-api/internal/admin/system/role` | Update role |
+| Role | DELETE | `/go-api/internal/admin/system/role` | Delete role |
+| Role | GET | `/go-api/internal/admin/system/role/permission` | Role permission IDs |
+| Role | PUT | `/go-api/internal/admin/system/role/permission` | Update role permissions |
+| User | GET | `/go-api/internal/admin/system/user/paginate` | User pagination |
+| User | GET | `/go-api/internal/admin/system/user` | User detail |
+| User | POST | `/go-api/internal/admin/system/user` | Create user |
+| User | PUT | `/go-api/internal/admin/system/user` | Update user |
+| User | DELETE | `/go-api/internal/admin/system/user` | Delete user |
+| User | GET | `/go-api/internal/admin/system/user/role` | User role IDs |
+| User | PUT | `/go-api/internal/admin/system/user/role` | Update user roles (keeps `base` role) |
+| User | PUT | `/go-api/internal/admin/system/user/password/reset` | Admin reset password |
+| User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | Admin disable TFA |
+| Record | GET | `/go-api/internal/admin/system/record/paginate` | Operation record pagination |
+| Record | GET | `/go-api/internal/admin/system/record/interaction` | Operation interaction detail |
+
+##### Core Data Structures (actual fields)
+
+`User` pagination/detail item:
+```json
+{
+  "id": 1,
+  "account": "admin",
+  "feishu_id": "",
+  "wechat_id": "",
+  "totp_enabled": false,
+  "user_name": "Administrator",
+  "status": 1,
+  "avatar": "",
+  "created_at": "2026-02-06T10:00:00+08:00"
+}
+```
+
+`Role` list item (`/role/list`):
+```json
+{
+  "id": 1,
+  "name": "base",
+  "description": "Base role"
+}
+```
+
+`Permission` item (`/permission/paginate` and `/permission`):
+```json
+{
+  "ID": 1,
+  "CreatedAt": "2026-02-06T10:00:00+08:00",
+  "UpdatedAt": "2026-02-06T10:00:00+08:00",
+  "DeletedAt": null,
+  "name": "user:list",
+  "type": "api",
+  "method": "GET",
+  "path": "/go-api/internal/admin/system/user/paginate",
+  "description": "List users",
+  "group": "user"
+}
+```
+
+`Menu` item (`/menu/list` and `/menu`):
+```json
+{
+  "ID": 1,
+  "CreatedAt": "2026-02-06T10:00:00+08:00",
+  "UpdatedAt": "2026-02-06T10:00:00+08:00",
+  "DeletedAt": null,
+  "name": "System",
+  "path": "/system",
+  "permission_id": 10,
+  "parent_id": 0,
+  "icon": "setting",
+  "sort": 1,
+  "children": []
+}
+```
+
+`OperationRecord` item (`/record/paginate`):
+```json
+{
+  "ID": 1024,
+  "CreatedAt": "2026-02-06T10:00:00+08:00",
+  "UpdatedAt": "2026-02-06T10:00:01+08:00",
+  "DeletedAt": null,
+  "ip": "127.0.0.1",
+  "method": "POST",
+  "path": "/go-api/internal/admin/system/user",
+  "status": 200,
+  "latency": 0.031,
+  "agent": "Mozilla/5.0",
+  "error_message": "",
+  "user_id": 1,
+  "user_name": "admin",
+  "params": "{\"user_name\":\"demo\"}",
+  "resp": "{\"code\":0,\"msg\":\"OK\"}",
+  "trace_id": "trace-xxx"
+}
+```
+
+`OperationInteraction` (`/record/interaction`):
+```json
+{
+  "params": {
+    "user_name": "demo"
+  },
+  "resp": {
+    "code": 0,
+    "msg": "OK"
+  }
+}
+```
+
+##### Pagination Notes (admin system)
+
+- `user/role/permission` use query `page` + `page_size` (default `1` + `10`, max `100`), response `{ "list": [...], "total": n }`
+- `record` uses query `page` + `size` (default `1` + `10`, max `100`), response `{ "items": [...], "total": n }`
+
+> Full request/response examples and module-level error codes are maintained in `docs/Admin-System-Management.md`.
+
 #### Health Check Endpoints
 
 ##### External Health Check
@@ -216,8 +362,8 @@ For endpoints that return lists, use pagination parameters:
 
 **Query Parameters:**
 ```
-page: int (default: 1) - Page number
-size: int (default: 20, max: 100) - Items per page
+Common: page: int (default: 1) - Page number
+Common: page_size/size: int (default: 10, max: 100) - Items per page
 ```
 
 **Response Format:**
@@ -226,16 +372,13 @@ size: int (default: 20, max: 100) - Items per page
   "code": 0,
   "message": "ok",
   "data": {
-    "items": [...],
-    "pagination": {
-      "page": 1,
-      "size": 20,
-      "total": 100,
-      "total_pages": 5
-    }
+    "list": [...],
+    "total": 100
   }
 }
 ```
+
+Some modules return `{ "items": [...], "total": n }` instead.
 
 ### API Versioning
 
@@ -469,6 +612,152 @@ Content-Type: application/json
 }
 ```
 
+#### 系统管理端点（内部）
+
+系统管理接口挂载在 `/go-api/internal/admin/system`。
+
+- 认证中间件：`CheckAdminAuth`
+- 令牌来源：`Authorization: Bearer <admin-token>` 或 Cookie `admin-token`
+- 审计中间件：`/go-api/internal/admin/*` 路由统一经过 `SaveOperationRecord` 并记录操作日志
+
+##### 路由清单
+
+| 模块 | 方法 | 路径 | 说明 |
+|------|------|------|------|
+| System | GET | `/go-api/internal/admin/system/ping` | 系统健康检查 |
+| Menu | GET | `/go-api/internal/admin/system/menu/list` | 菜单树列表 |
+| Menu | GET | `/go-api/internal/admin/system/menu` | 菜单详情 |
+| Menu | POST | `/go-api/internal/admin/system/menu` | 创建菜单 |
+| Menu | PUT | `/go-api/internal/admin/system/menu` | 更新菜单 |
+| Menu | DELETE | `/go-api/internal/admin/system/menu` | 删除菜单 |
+| Permission | GET | `/go-api/internal/admin/system/permission/available` | 按 HTTP 方法分组的待绑定后台路由 |
+| Permission | GET | `/go-api/internal/admin/system/permission/list` | 按分组权限列表 |
+| Permission | GET | `/go-api/internal/admin/system/permission/paginate` | 权限分页 |
+| Permission | GET | `/go-api/internal/admin/system/permission` | 权限详情 |
+| Permission | POST | `/go-api/internal/admin/system/permission` | 创建权限 |
+| Permission | PUT | `/go-api/internal/admin/system/permission` | 更新权限 |
+| Permission | DELETE | `/go-api/internal/admin/system/permission` | 删除权限 |
+| Role | GET | `/go-api/internal/admin/system/role/list` | 角色列表 |
+| Role | GET | `/go-api/internal/admin/system/role/paginate` | 角色分页 |
+| Role | GET | `/go-api/internal/admin/system/role` | 角色详情 |
+| Role | POST | `/go-api/internal/admin/system/role` | 创建角色 |
+| Role | PUT | `/go-api/internal/admin/system/role` | 更新角色 |
+| Role | DELETE | `/go-api/internal/admin/system/role` | 删除角色 |
+| Role | GET | `/go-api/internal/admin/system/role/permission` | 角色权限 ID 列表 |
+| Role | PUT | `/go-api/internal/admin/system/role/permission` | 更新角色权限 |
+| User | GET | `/go-api/internal/admin/system/user/paginate` | 用户分页 |
+| User | GET | `/go-api/internal/admin/system/user` | 用户详情 |
+| User | POST | `/go-api/internal/admin/system/user` | 创建用户 |
+| User | PUT | `/go-api/internal/admin/system/user` | 更新用户 |
+| User | DELETE | `/go-api/internal/admin/system/user` | 删除用户 |
+| User | GET | `/go-api/internal/admin/system/user/role` | 用户角色 ID 列表 |
+| User | PUT | `/go-api/internal/admin/system/user/role` | 更新用户角色（会保留 `base` 角色） |
+| User | PUT | `/go-api/internal/admin/system/user/password/reset` | 管理员重置密码 |
+| User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | 管理员关闭 TFA |
+| Record | GET | `/go-api/internal/admin/system/record/paginate` | 操作记录分页 |
+| Record | GET | `/go-api/internal/admin/system/record/interaction` | 操作交互详情 |
+
+##### 核心数据结构（当前实现字段）
+
+`User` 分页/详情项：
+```json
+{
+  "id": 1,
+  "account": "admin",
+  "feishu_id": "",
+  "wechat_id": "",
+  "totp_enabled": false,
+  "user_name": "管理员",
+  "status": 1,
+  "avatar": "",
+  "created_at": "2026-02-06T10:00:00+08:00"
+}
+```
+
+`Role` 列表项（`/role/list`）：
+```json
+{
+  "id": 1,
+  "name": "base",
+  "description": "基础角色"
+}
+```
+
+`Permission` 项（`/permission/paginate`、`/permission`）：
+```json
+{
+  "ID": 1,
+  "CreatedAt": "2026-02-06T10:00:00+08:00",
+  "UpdatedAt": "2026-02-06T10:00:00+08:00",
+  "DeletedAt": null,
+  "name": "user:list",
+  "type": "api",
+  "method": "GET",
+  "path": "/go-api/internal/admin/system/user/paginate",
+  "description": "查询用户列表",
+  "group": "user"
+}
+```
+
+`Menu` 项（`/menu/list`、`/menu`）：
+```json
+{
+  "ID": 1,
+  "CreatedAt": "2026-02-06T10:00:00+08:00",
+  "UpdatedAt": "2026-02-06T10:00:00+08:00",
+  "DeletedAt": null,
+  "name": "系统管理",
+  "path": "/system",
+  "permission_id": 10,
+  "parent_id": 0,
+  "icon": "setting",
+  "sort": 1,
+  "children": []
+}
+```
+
+`OperationRecord` 项（`/record/paginate`）：
+```json
+{
+  "ID": 1024,
+  "CreatedAt": "2026-02-06T10:00:00+08:00",
+  "UpdatedAt": "2026-02-06T10:00:01+08:00",
+  "DeletedAt": null,
+  "ip": "127.0.0.1",
+  "method": "POST",
+  "path": "/go-api/internal/admin/system/user",
+  "status": 200,
+  "latency": 0.031,
+  "agent": "Mozilla/5.0",
+  "error_message": "",
+  "user_id": 1,
+  "user_name": "admin",
+  "params": "{\"user_name\":\"demo\"}",
+  "resp": "{\"code\":0,\"msg\":\"OK\"}",
+  "trace_id": "trace-xxx"
+}
+```
+
+`OperationInteraction`（`/record/interaction`）：
+```json
+{
+  "params": {
+    "user_name": "demo"
+  },
+  "resp": {
+    "code": 0,
+    "msg": "OK"
+  }
+}
+```
+
+##### 分页说明（系统管理）
+
+- `user/role/permission` 使用 `page` + `page_size`（默认 `1` + `10`，最大 `100`），返回 `{ "list": [...], "total": n }`
+- `record` 使用 `page` + `size`（默认 `1` + `10`，最大 `100`），返回 `{ "items": [...], "total": n }`
+
+> 更完整的请求参数、响应示例和模块错误码请查看 `docs/Admin-System-Management.md`。
+
 #### 健康检查端点
 
 ##### 外部健康检查
@@ -584,8 +873,8 @@ API请求受到速率限制以防止滥用：
 
 **查询参数:**
 ```
-page: int (默认: 1) - 页码
-size: int (默认: 20, 最大: 100) - 每页项目数
+通用: page: int (默认: 1) - 页码
+通用: page_size/size: int (默认: 10, 最大: 100) - 每页项目数
 ```
 
 **响应格式:**
@@ -594,16 +883,13 @@ size: int (默认: 20, 最大: 100) - 每页项目数
   "code": 0,
   "message": "ok",
   "data": {
-    "items": [...],
-    "pagination": {
-      "page": 1,
-      "size": 20,
-      "total": 100,
-      "total_pages": 5
-    }
+    "list": [...],
+    "total": 100
   }
 }
 ```
+
+部分模块返回 `{ "items": [...], "total": n }`。
 
 ### API版本控制
 
