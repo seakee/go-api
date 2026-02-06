@@ -148,7 +148,7 @@ func (s userService) Delete(ctx context.Context, id uint) error {
 
 	err = s.userRepo.DeleteByID(ctx, id)
 	if err == nil {
-		err = s.roleUserRepo.DeleteByRoleID(ctx, id)
+		err = s.roleUserRepo.DeleteByUserID(ctx, id)
 	}
 
 	return err

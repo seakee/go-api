@@ -70,6 +70,10 @@ func (h handler) Roles() gin.HandlerFunc {
 		if userID != "" {
 			errCode = e.ERROR
 			rid, err = strconv.ParseUint(userID, 10, 64)
+			if err != nil {
+				h.I18n.JSON(c, e.InvalidParams, nil, err)
+				return
+			}
 			data, err = h.service.Roles(ctx, uint(rid))
 			if err == nil {
 				errCode = e.SUCCESS

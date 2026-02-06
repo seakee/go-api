@@ -123,7 +123,7 @@ func (r roleService) Update(ctx context.Context, role *system.Role) (errCode int
 
 	rol, err := r.roleRepo.Detail(ctx, &system.Role{Model: gorm.Model{ID: role.ID}})
 	if rol != nil {
-		roleName := strings.ToLower(role.Name)
+		roleName := strings.ToLower(rol.Name)
 		if roleName == "base" || roleName == "super_admin" {
 			errCode = e.RoleCanNotBeOperated
 			return

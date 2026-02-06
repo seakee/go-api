@@ -46,7 +46,7 @@ type AccessToken struct {
 // AuthParam defines the structure of authentication parameters.
 type AuthParam struct {
 	Account     string `json:"account"`                        // User account
-	GrantType   string `json:"grant_type" binding:"required"`  // Grant type (password: password login, feishu: Feishu login, wechat: WeChat Work login, github: GitHub login, totp: 2FA login)
+	GrantType   string `json:"grant_type" binding:"required"`  // Grant type (password: password login, feishu: Feishu login, wechat: WeChat Work login, totp: 2FA login)
 	State       string `json:"state"`                          // State, used for some OAuth flows
 	Credentials string `json:"credentials" binding:"required"` // Credentials (such as password, verification code, etc.)
 }
@@ -100,7 +100,7 @@ type authService struct {
 //
 // Parameters:
 //   - ctx: Context
-//   - oauthType: OAuth type (feishu, gitHub, wechat)
+//   - oauthType: OAuth type (feishu, wechat)
 //   - loginType: Login type (qrcode) only for enterprise QR code scanning login
 //
 // Returns:
@@ -440,7 +440,7 @@ func (a authService) ResetPassword(ctx context.Context, sCode string, password s
 	var sc *safeCode
 	sc, err = a.parseSafeCode(ctx, sCode)
 	if err != nil {
-		errCode = e.ERROR
+		errCode = e.InvalidSafeCode
 		return
 	}
 
@@ -944,7 +944,7 @@ func (a authService) verifyByTotp(ctx context.Context, totpCode, sCode string) (
 	var sc *safeCode
 	sc, err = a.parseSafeCode(ctx, sCode)
 	if err != nil {
-		errCode = e.ERROR
+		errCode = e.InvalidSafeCode
 		return
 	}
 
@@ -961,6 +961,14 @@ func (a authService) verifyByTotp(ctx context.Context, totpCode, sCode string) (
 
 	// Get user information
 	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: sc.UserID}})
+	if err != nil {
+		errCode = e.ERROR
+		return
+	}
+	if user == nil {
+		errCode = e.AccountNotFound
+		return
+	}
 	// Verify TOTP code
 	if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
 		errCode = e.InvalidTotpCode
@@ -1083,6 +1091,13 @@ func (a authService) parseSafeCode(ctx context.Context, code string) (*safeCode,
 // Returns:
 //   - AuthService: Authentication service interface
 func NewAuthService(redis *redis.Manager, logger *logger.Manager, db *gorm.DB, notify *notify.Manager) AuthService {
+	cfg := config.Get().System.Admin
+	if cfg.JwtSecret == "" {
+		cfg.JwtSecret = config.Get().System.JwtSecret
+	}
+	if cfg.TokenExpireIn <= 0 {
+		cfg.TokenExpireIn = int64(config.Get().System.TokenExpire)
+	}
 	return &authService{
 		redis:    redis,
 		logger:   logger,
@@ -1090,7 +1105,7 @@ func NewAuthService(redis *redis.Manager, logger *logger.Manager, db *gorm.DB, n
 		totp:     totp.NewGenerator("go-api-admin"),
 		authRepo: repo.NewAuthRepo(db, redis, logger),
 		menuRepo: repo.NewMenuRepo(db, redis, logger),
-		config:   config.Get().System.Admin,
+		config:   cfg,
 		request:  resty.New(),
 		notify:   notify,
 	}

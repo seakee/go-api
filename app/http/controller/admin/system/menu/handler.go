@@ -55,6 +55,11 @@ func (h handler) Detail() gin.HandlerFunc {
 
 			errCode = e.ERROR
 			uintID, err = strconv.ParseUint(id, 10, 64)
+			if err != nil {
+				h.I18n.JSON(c, e.InvalidParams, nil, err)
+				return
+			}
+
 			if err == nil {
 				menu, errCode, err = h.service.Detail(ctx, uint(uintID))
 			}
@@ -109,6 +114,11 @@ func (h handler) Delete() gin.HandlerFunc {
 
 			errCode = e.ERROR
 			uintID, err = strconv.ParseUint(id, 10, 64)
+			if err != nil {
+				h.I18n.JSON(c, e.InvalidParams, nil, err)
+				return
+			}
+
 			if err == nil {
 				errCode, err = h.service.Delete(ctx, uint(uintID))
 			}

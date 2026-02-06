@@ -90,6 +90,8 @@ func (m menuService) Update(ctx context.Context, menu *system.Menu) (errCode int
 		return e.MenuNotFound, nil
 	}
 
+	menu.PermissionId = detail.PermissionId
+
 	err = m.menuRepo.Update(ctx, menu)
 	if err != nil {
 		return e.ERROR, err

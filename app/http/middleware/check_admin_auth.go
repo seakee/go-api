@@ -56,11 +56,14 @@ func getContext(c *gin.Context) context.Context {
 
 func (m middleware) checkAdminAuthToken(c *gin.Context) (userID uint, errCode int, err error) {
 	errCode = e.ServerUnauthorized
-	// First, try to get the token from the Authorization header
-	token := c.Request.Header.Get("Authorization")
+		// First, try to get the token from the Authorization header
+		token := c.Request.Header.Get("Authorization")
+		if strings.HasPrefix(token, "Bearer ") {
+			token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer "))
+		}
 
-	// If not found, try to get it from the Cookie
-	if token == "" {
+		// If not found, try to get it from the Cookie
+		if token == "" {
 		if cookie, cookieErr := c.Request.Cookie("admin-token"); cookieErr == nil {
 			token = cookie.Value
 		}

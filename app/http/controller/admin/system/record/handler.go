@@ -53,7 +53,10 @@ func (h handler) Paginate() gin.HandlerFunc {
 		}
 
 		if req.ID != "" {
-			_ = r.SetID(req.ID)
+			if err := r.SetID(req.ID); err != nil {
+				h.I18n.JSON(c, e.InvalidParams, nil, err)
+				return
+			}
 		}
 
 		list, total, err := h.service.Paginate(
@@ -83,6 +86,11 @@ func (h handler) Interaction() gin.HandlerFunc {
 
 		if err := c.ShouldBindQuery(&req); err != nil {
 			h.I18n.JSON(c, e.InvalidParams, nil, err)
+			return
+		}
+
+		if req.ID == "" {
+			h.I18n.JSON(c, e.InvalidParams, nil, nil)
 			return
 		}
 

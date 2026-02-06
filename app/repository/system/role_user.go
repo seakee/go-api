@@ -18,6 +18,7 @@ type RoleUserRepo interface {
 	ListByUserID(ctx context.Context, userID uint) (roles []uint, err error)
 	UpdateUserRole(ctx context.Context, userID uint, roles []uint) error
 	DeleteByRoleID(ctx context.Context, roleID uint) error
+	DeleteByUserID(ctx context.Context, userID uint) error
 }
 
 type roleUserRepo struct {
@@ -33,6 +34,16 @@ func (rup roleUserRepo) DeleteByRoleID(ctx context.Context, roleID uint) error {
 	}
 
 	ru := &role.User{RoleId: roleID}
+	return ru.Delete(ctx, rup.db)
+}
+
+func (rup roleUserRepo) DeleteByUserID(ctx context.Context, userID uint) error {
+	err := clearUserCache(ctx, rup.redis)
+	if err != nil {
+		rup.logger.Error(ctx, "clear user cache failed", zap.String("action", "delete user role"), zap.Error(err))
+	}
+
+	ru := &role.User{UserId: userID}
 	return ru.Delete(ctx, rup.db)
 }
 

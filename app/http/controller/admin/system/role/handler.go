@@ -50,6 +50,10 @@ func (h handler) Permissions() gin.HandlerFunc {
 		if roleId != "" {
 			errCode = e.ERROR
 			rid, err = strconv.ParseUint(roleId, 10, 64)
+			if err != nil {
+				h.I18n.JSON(c, e.InvalidParams, nil, err)
+				return
+			}
 			data, err = h.service.PermissionList(ctx, uint(rid))
 			if err == nil {
 				errCode = e.SUCCESS
