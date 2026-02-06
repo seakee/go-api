@@ -22,6 +22,8 @@ type UserService interface {
 
 	Roles(ctx context.Context, userID uint) ([]uint, error)
 	UpdateRole(ctx context.Context, userID uint, roles []uint) error
+	ResetPassword(ctx context.Context, userID uint, password string) (errCode int, err error)
+	DisableTfa(ctx context.Context, userID uint) (errCode int, err error)
 }
 
 type userService struct {
@@ -43,6 +45,50 @@ func (s userService) UpdateRole(ctx context.Context, userID uint, roles []uint) 
 	}
 
 	return s.roleUserRepo.UpdateUserRole(ctx, userID, roles)
+}
+
+func (s userService) ResetPassword(ctx context.Context, userID uint, password string) (errCode int, err error) {
+	if password == "" {
+		return e.PasswordCanNotBeNull, nil
+	}
+
+	hasRole, _ := s.authRepo.HasRole(ctx, userID, "super_admin")
+	if hasRole {
+		return e.UserCanNotBeOperated, errors.New("this user is a super admin, cannot be operated")
+	}
+
+	var user *system.User
+	user, err = s.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
+	if user == nil {
+		return e.AccountNotFound, err
+	}
+
+	err = s.userRepo.Update(ctx, &system.User{Model: gorm.Model{ID: userID}, Password: password})
+	if err != nil {
+		return e.ERROR, err
+	}
+
+	return e.SUCCESS, nil
+}
+
+func (s userService) DisableTfa(ctx context.Context, userID uint) (errCode int, err error) {
+	hasRole, _ := s.authRepo.HasRole(ctx, userID, "super_admin")
+	if hasRole {
+		return e.UserCanNotBeOperated, errors.New("this user is a super admin, cannot be operated")
+	}
+
+	var user *system.User
+	user, err = s.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
+	if user == nil {
+		return e.AccountNotFound, err
+	}
+
+	err = s.userRepo.UpdateTotpStatus(ctx, &system.User{Model: gorm.Model{ID: userID}, TotpEnabled: false})
+	if err != nil {
+		return e.ERROR, err
+	}
+
+	return e.SUCCESS, nil
 }
 
 func (s userService) Paginate(ctx context.Context, user *system.User, page, size int) (list []system.User, total int64, err error) {

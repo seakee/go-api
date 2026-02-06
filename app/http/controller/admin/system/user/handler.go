@@ -23,6 +23,8 @@ type Handler interface {
 
 	Roles() gin.HandlerFunc
 	UpdateRole() gin.HandlerFunc
+	ResetPassword() gin.HandlerFunc
+	DisableTfa() gin.HandlerFunc
 }
 
 type handler struct {
@@ -99,6 +101,53 @@ func (h handler) UpdateRole() gin.HandlerFunc {
 		}
 
 		h.I18n.JSON(c, e.SUCCESS, nil, nil)
+	}
+}
+
+func (h handler) ResetPassword() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var err error
+		var req struct {
+			UserID   uint   `json:"user_id" binding:"required"`
+			Password string `json:"password"`
+		}
+
+		ctx := h.Context(c)
+
+		errCode := e.InvalidParams
+		if err = c.ShouldBindJSON(&req); err == nil {
+			if req.UserID == 0 {
+				h.I18n.JSON(c, e.InvalidParams, nil, nil)
+				return
+			}
+
+			errCode, err = h.service.ResetPassword(ctx, req.UserID, req.Password)
+		}
+
+		h.I18n.JSON(c, errCode, nil, err)
+	}
+}
+
+func (h handler) DisableTfa() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var err error
+		var req struct {
+			UserID uint `json:"user_id" binding:"required"`
+		}
+
+		ctx := h.Context(c)
+
+		errCode := e.InvalidParams
+		if err = c.ShouldBindJSON(&req); err == nil {
+			if req.UserID == 0 {
+				h.I18n.JSON(c, e.InvalidParams, nil, nil)
+				return
+			}
+
+			errCode, err = h.service.DisableTfa(ctx, req.UserID)
+		}
+
+		h.I18n.JSON(c, errCode, nil, err)
 	}
 }
 
