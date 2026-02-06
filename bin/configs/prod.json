@@ -9,7 +9,27 @@
     "debug_mode": true,
     "default_lang": "zh-CN",
     "jwt_secret": "",
-    "token_expire": 604800
+    "token_expire": 604800,
+    "admin": {
+      "safe_code_expire_in": 180,
+      "token_expire_in": 2592000,
+      "jwt_secret": "",
+      "oauth": {
+        "redirect_url": "http://127.0.0.1:3000/oauth",
+        "feishu": {
+          "client_id": "cli_xxx",
+          "client_secret": "xxxx",
+          "oauth_url": "https://open.feishu.cn/open-apis/authen/v1/authorize"
+        },
+        "wechat": {
+          "corp_id": "ww58xxx",
+          "agent_id": "10xxxxx",
+          "corp_secret": "xxxxx",
+          "oauth_url": "https://open.weixin.qq.com/connect/oauth2/authorize",
+          "proxy_url": "http://username:password@1.1.1.1:443"
+        }
+      }
+    }
   },
   "log": {
     "driver": "stdout",
@@ -25,7 +45,6 @@
       "db_port": 3306,
       "db_username": "db_username",
       "db_password": "db_password",
-      "charset": "utf8mb4",
       "db_max_idle_conn": 10,
       "db_max_open_conn": 50,
       "conn_max_lifetime": 3,
