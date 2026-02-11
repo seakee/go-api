@@ -34,7 +34,8 @@ type handler struct {
 
 type info struct {
 	ID          uint      `json:"id"`
-	Account     string    `json:"account"`
+	Email       string    `json:"email"`
+	Phone       string    `json:"phone"`
 	FeishuID    string    `json:"feishu_id"`
 	WechatID    string    `json:"wechat_id"`
 	TotpEnabled bool      `json:"totp_enabled"`
@@ -48,7 +49,8 @@ type info struct {
 type params struct {
 	ID       uint   `json:"id"`
 	UserName string `json:"user_name"`
-	Account  string `json:"account"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
 	Status   int8   `json:"status"`
 	Password string `json:"password"`
 	Avatar   string `json:"avatar"`
@@ -99,12 +101,8 @@ func (h handler) UpdateRole() gin.HandlerFunc {
 			return
 		}
 
-		if err = h.service.UpdateRole(ctx, req.UserID, req.RoleIDs); err != nil {
-			h.I18n.JSON(c, e.ERROR, nil, err)
-			return
-		}
-
-		h.I18n.JSON(c, e.SUCCESS, nil, nil)
+		errCode, err := h.service.UpdateRole(ctx, req.UserID, req.RoleIDs)
+		h.I18n.JSON(c, errCode, nil, err)
 	}
 }
 
@@ -168,7 +166,8 @@ func (h handler) Paginate() gin.HandlerFunc {
 			Status   int8   `form:"status"`
 			Page     int    `form:"page"`
 			PageSize int    `form:"page_size"`
-			Account  string `form:"account"`
+			Email    string `form:"email"`
+			Phone    string `form:"phone"`
 		}
 
 		ctx := h.Context(c)
@@ -181,7 +180,8 @@ func (h handler) Paginate() gin.HandlerFunc {
 			list, total, err = h.service.Paginate(ctx, &systemModel.User{
 				UserName: req.UserName,
 				Status:   req.Status,
-				Account:  req.Account,
+				Email:    req.Email,
+				Phone:    req.Phone,
 			}, req.Page, req.PageSize)
 			if err != nil {
 				errCode = e.ERROR
@@ -192,7 +192,8 @@ func (h handler) Paginate() gin.HandlerFunc {
 		for i := range list {
 			userList[i] = info{
 				ID:          list[i].ID,
-				Account:     list[i].Account,
+				Email:       list[i].Email,
+				Phone:       list[i].Phone,
 				FeishuID:    list[i].FeishuId,
 				WechatID:    list[i].WechatId,
 				TotpEnabled: list[i].TotpEnabled,
@@ -228,7 +229,8 @@ func (h handler) Detail() gin.HandlerFunc {
 			if err == nil {
 				data = info{
 					ID:          a.ID,
-					Account:     a.Account,
+					Email:       a.Email,
+					Phone:       a.Phone,
 					FeishuID:    a.FeishuId,
 					WechatID:    a.WechatId,
 					TotpEnabled: a.TotpEnabled,
@@ -256,7 +258,8 @@ func (h handler) Create() gin.HandlerFunc {
 		if err = c.ShouldBindJSON(&req); err == nil {
 			perm = &systemModel.User{
 				UserName: req.UserName,
-				Account:  req.Account,
+				Email:    req.Email,
+				Phone:    req.Phone,
 				Password: req.Password,
 				Avatar:   req.Avatar,
 				Status:   req.Status,
@@ -283,11 +286,7 @@ func (h handler) Delete() gin.HandlerFunc {
 
 		errCode := e.InvalidParams
 		if err = c.ShouldBindQuery(&req); err == nil {
-			errCode = e.ERROR
-			err = h.service.Delete(ctx, req.ID)
-			if err == nil {
-				errCode = e.SUCCESS
-			}
+			errCode, err = h.service.Delete(ctx, req.ID)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)
@@ -308,7 +307,8 @@ func (h handler) Update() gin.HandlerFunc {
 				a = &systemModel.User{
 					Model:    gorm.Model{ID: req.ID},
 					UserName: req.UserName,
-					Account:  req.Account,
+					Email:    req.Email,
+					Phone:    req.Phone,
 					Password: req.Password,
 					Avatar:   req.Avatar,
 					Status:   req.Status,

@@ -26,7 +26,8 @@ func TestUserService_Detail(t *testing.T) {
 			userID: 1,
 			mockUser: &system.User{
 				Model:    gorm.Model{ID: 1},
-				Account:  "testuser",
+				Email:    "test@example.com",
+				Phone:    "+8613800000000",
 				UserName: "Test User",
 			},
 			mockErr:     nil,
@@ -38,7 +39,7 @@ func TestUserService_Detail(t *testing.T) {
 			userID:      999,
 			mockUser:    nil,
 			mockErr:     errors.New("record not found"),
-			wantErrCode: e.AccountNotFound,
+			wantErrCode: e.UserNotFound,
 			wantErr:     true,
 		},
 	}
@@ -93,8 +94,8 @@ func TestUserService_Paginate(t *testing.T) {
 			page: 1,
 			size: 10,
 			mockUsers: []system.User{
-				{Model: gorm.Model{ID: 1}, Account: "user1"},
-				{Model: gorm.Model{ID: 2}, Account: "user2"},
+				{Model: gorm.Model{ID: 1}, Email: "user1@example.com", Phone: "+8613800000001"},
+				{Model: gorm.Model{ID: 2}, Email: "user2@example.com", Phone: "+8613800000002"},
 			},
 			mockCount: 2,
 			mockErr:   nil,

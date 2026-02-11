@@ -16,7 +16,8 @@ import (
 type User struct {
 	gorm.Model
 
-	Account     string `gorm:"column:account" json:"account"`
+	Email       string `gorm:"column:email" json:"email"`
+	Phone       string `gorm:"column:phone" json:"phone"`
 	Password    string `gorm:"column:password" json:"password"`
 	Salt        string `gorm:"column:salt" json:"salt"`
 	TotpKey     string `gorm:"column:totp_key" json:"totp_key"`
