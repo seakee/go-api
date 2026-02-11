@@ -24,6 +24,7 @@ const (
 // AuthRepo defines the authentication repository interface.
 type AuthRepo interface {
 	HasRole(ctx context.Context, userID uint, role string) (bool, error)
+	ListRoles(ctx context.Context, userID uint) (map[string]uint, error)
 	HasPermission(ctx context.Context, userID uint, permissionHash string) (bool, error)
 }
 
@@ -54,6 +55,27 @@ func (a authRepo) HasRole(ctx context.Context, userID uint, role string) (bool, 
 	// Check if user has the specified role
 	_, hasRole := roles[role]
 	return hasRole, nil
+}
+
+func (a authRepo) ListRoles(ctx context.Context, userID uint) (map[string]uint, error) {
+	roleCacheKey := util.SpliceStr(userCachePrefix, roleCacheSuffix)
+
+	userRoleList, err := a.getUserRoles(ctx, roleCacheKey)
+	if err != nil {
+		return nil, err
+	}
+
+	roles, exists := userRoleList[userID]
+	if !exists {
+		return map[string]uint{}, nil
+	}
+
+	result := make(map[string]uint, len(roles))
+	for roleName, roleID := range roles {
+		result[roleName] = roleID
+	}
+
+	return result, nil
 }
 
 // HasPermission checks if the user has the specified permission.

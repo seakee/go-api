@@ -22,7 +22,8 @@ type Handler interface {
 
 	UserMenuList() gin.HandlerFunc
 
-	UpdateAccount() gin.HandlerFunc
+	UpdateIdentifier() gin.HandlerFunc
+	BindOAuth() gin.HandlerFunc
 
 	DisableTfa() gin.HandlerFunc
 	EnableTfa() gin.HandlerFunc
@@ -99,11 +100,13 @@ func (h handler) TotpKey() gin.HandlerFunc {
 	}
 }
 
-func (h handler) UpdateAccount() gin.HandlerFunc {
+func (h handler) UpdateIdentifier() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			TotpCode string `json:"totp_code" binding:"required"`
-			Account  string `json:"account" binding:"required"`
+			TotpCode string `json:"totp_code"`
+			Password string `json:"password"`
+			Email    string `json:"email"`
+			Phone    string `json:"phone"`
 		}
 
 		var err error
@@ -113,7 +116,27 @@ func (h handler) UpdateAccount() gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 
 		if err = c.ShouldBind(&req); err == nil {
-			errCode, err = h.service.UpdateAccount(h.Context(c), userID.(uint), req.TotpCode, req.Account)
+			errCode, err = h.service.UpdateIdentifier(h.Context(c), userID.(uint), req.TotpCode, req.Password, req.Email, req.Phone)
+		}
+
+		h.I18n.JSON(c, errCode, nil, err)
+	}
+}
+
+func (h handler) BindOAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			SafeCode   string `json:"safe_code" binding:"required"`
+			Identifier string `json:"identifier" binding:"required"`
+			Password   string `json:"password"`
+			TotpCode   string `json:"totp_code"`
+		}
+
+		var err error
+		errCode := e.InvalidParams
+
+		if err = c.ShouldBind(&req); err == nil {
+			errCode, err = h.service.BindOAuth(h.Context(c), req.SafeCode, req.Identifier, req.Password, req.TotpCode)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)
@@ -197,8 +220,9 @@ func (h handler) ResetPassword() gin.HandlerFunc {
 func (h handler) UpdatePassword() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			TotpCode string `json:"totp_code" binding:"required"`
-			Password string `json:"password" binding:"required"`
+			TotpCode    string `json:"totp_code"`
+			OldPassword string `json:"old_password"`
+			Password    string `json:"password" binding:"required"`
 		}
 
 		var err error
@@ -208,7 +232,7 @@ func (h handler) UpdatePassword() gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 
 		if err = c.ShouldBind(&req); err == nil {
-			errCode, err = h.service.UpdatePassword(h.Context(c), userID.(uint), req.TotpCode, req.Password)
+			errCode, err = h.service.UpdatePassword(h.Context(c), userID.(uint), req.TotpCode, req.OldPassword, req.Password)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)
@@ -245,6 +269,10 @@ func (h handler) Token() gin.HandlerFunc {
 
 		if err = c.ShouldBindJSON(&params); err == nil {
 			token, errCode, err = h.service.Token(h.Context(c), &params)
+			if errCode == e.NeedBindOAuth {
+				h.I18n.JSON(c, errCode, gin.H{"safe_code": token.SafeCode}, err)
+				return
+			}
 		}
 
 		h.I18n.JSON(c, errCode, token, err)

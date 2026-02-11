@@ -30,7 +30,7 @@ func (m middleware) CheckAdminAuth() gin.HandlerFunc {
 
 			ok, err = m.authService.HasPermission(ctx, userID, permissionHash)
 			if !ok {
-				m.i18n.JSON(c, e.AccountInsufficientPermissions, nil, err)
+				m.i18n.JSON(c, e.UserInsufficientPermissions, nil, err)
 				c.Abort()
 				return
 			}
@@ -77,13 +77,13 @@ func (m middleware) checkAdminAuthToken(c *gin.Context) (userID uint, errCode in
 		if err != nil {
 			switch {
 			case errors.Is(err, jwt.ErrTokenExpired):
-				errCode = e.AccountAuthorizationExpired
+				errCode = e.UserAuthorizationExpired
 			case errors.Is(err, jwt.ErrTokenMalformed):
-				errCode = e.InvalidAccount
+				errCode = e.InvalidIdentifier
 			case errors.Is(err, jwt.ErrTokenSignatureInvalid):
 				errCode = e.TokenSignatureInvalid
 			default:
-				errCode = e.AccountUnauthorized
+				errCode = e.UserUnauthorized
 			}
 
 			return

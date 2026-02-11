@@ -14,21 +14,26 @@ import (
 	"context"
 
 	"github.com/seakee/go-api/app/model/system"
+	repo "github.com/seakee/go-api/app/repository/system"
 )
 
 // mockUserRepo is a mock implementation of the UserRepo interface.
 type mockUserRepo struct {
-	DetailFunc           func(ctx context.Context, user *system.User) (*system.User, error)
-	CreateFunc           func(ctx context.Context, user *system.User) (*system.User, error)
-	DetailByAccountFunc  func(ctx context.Context, account string) (*system.User, error)
-	CreateOrUpdateFunc   func(ctx context.Context, user *system.User) (*system.User, error)
-	DetailByIDFunc       func(ctx context.Context, id uint) (*system.User, error)
-	DeleteByIDFunc       func(ctx context.Context, id uint) error
-	UpdateFunc           func(ctx context.Context, user *system.User) error
-	UpdateTotpStatusFunc func(ctx context.Context, user *system.User) error
-	PaginateFunc         func(ctx context.Context, user *system.User, page, pageSize int) ([]system.User, error)
-	GetOAuthUserFunc     func(ctx context.Context, oauthType, id string) (*system.User, error)
-	CountFunc            func(ctx context.Context, user *system.User) (int64, error)
+	DetailFunc             func(ctx context.Context, user *system.User) (*system.User, error)
+	CreateFunc             func(ctx context.Context, user *system.User) (*system.User, error)
+	DetailByEmailFunc      func(ctx context.Context, email string) (*system.User, error)
+	DetailByPhoneFunc      func(ctx context.Context, phone string) (*system.User, error)
+	DetailByIdentifierFunc func(ctx context.Context, identifier string) (*system.User, error)
+	CreateOrUpdateFunc     func(ctx context.Context, user *system.User) (*system.User, error)
+	DetailByIDFunc         func(ctx context.Context, id uint) (*system.User, error)
+	ListByIDsFunc          func(ctx context.Context, ids []uint) ([]system.User, error)
+	DeleteByIDFunc         func(ctx context.Context, id uint) error
+	UpdateFunc             func(ctx context.Context, user *system.User) error
+	UpdateIdentifierFunc   func(ctx context.Context, user *system.User) error
+	UpdateTotpStatusFunc   func(ctx context.Context, user *system.User) error
+	PaginateFunc           func(ctx context.Context, user *system.User, page, pageSize int) ([]system.User, error)
+	GetOAuthUserFunc       func(ctx context.Context, oauthType, id string) (*system.User, error)
+	CountFunc              func(ctx context.Context, user *system.User) (int64, error)
 }
 
 func (m *mockUserRepo) Detail(ctx context.Context, user *system.User) (*system.User, error) {
@@ -45,9 +50,23 @@ func (m *mockUserRepo) Create(ctx context.Context, user *system.User) (*system.U
 	return user, nil
 }
 
-func (m *mockUserRepo) DetailByAccount(ctx context.Context, account string) (*system.User, error) {
-	if m.DetailByAccountFunc != nil {
-		return m.DetailByAccountFunc(ctx, account)
+func (m *mockUserRepo) DetailByEmail(ctx context.Context, email string) (*system.User, error) {
+	if m.DetailByEmailFunc != nil {
+		return m.DetailByEmailFunc(ctx, email)
+	}
+	return nil, nil
+}
+
+func (m *mockUserRepo) DetailByPhone(ctx context.Context, phone string) (*system.User, error) {
+	if m.DetailByPhoneFunc != nil {
+		return m.DetailByPhoneFunc(ctx, phone)
+	}
+	return nil, nil
+}
+
+func (m *mockUserRepo) DetailByIdentifier(ctx context.Context, identifier string) (*system.User, error) {
+	if m.DetailByIdentifierFunc != nil {
+		return m.DetailByIdentifierFunc(ctx, identifier)
 	}
 	return nil, nil
 }
@@ -66,6 +85,13 @@ func (m *mockUserRepo) DetailByID(ctx context.Context, id uint) (*system.User, e
 	return nil, nil
 }
 
+func (m *mockUserRepo) ListByIDs(ctx context.Context, ids []uint) ([]system.User, error) {
+	if m.ListByIDsFunc != nil {
+		return m.ListByIDsFunc(ctx, ids)
+	}
+	return nil, nil
+}
+
 func (m *mockUserRepo) DeleteByID(ctx context.Context, id uint) error {
 	if m.DeleteByIDFunc != nil {
 		return m.DeleteByIDFunc(ctx, id)
@@ -76,6 +102,13 @@ func (m *mockUserRepo) DeleteByID(ctx context.Context, id uint) error {
 func (m *mockUserRepo) Update(ctx context.Context, user *system.User) error {
 	if m.UpdateFunc != nil {
 		return m.UpdateFunc(ctx, user)
+	}
+	return nil
+}
+
+func (m *mockUserRepo) UpdateIdentifier(ctx context.Context, user *system.User) error {
+	if m.UpdateIdentifierFunc != nil {
+		return m.UpdateIdentifierFunc(ctx, user)
 	}
 	return nil
 }
@@ -111,6 +144,7 @@ func (m *mockUserRepo) Count(ctx context.Context, user *system.User) (int64, err
 // mockAuthRepo is a mock implementation of the AuthRepo interface.
 type mockAuthRepo struct {
 	HasRoleFunc       func(ctx context.Context, userID uint, role string) (bool, error)
+	ListRolesFunc     func(ctx context.Context, userID uint) (map[string]uint, error)
 	HasPermissionFunc func(ctx context.Context, userID uint, permissionHash string) (bool, error)
 }
 
@@ -119,6 +153,13 @@ func (m *mockAuthRepo) HasRole(ctx context.Context, userID uint, role string) (b
 		return m.HasRoleFunc(ctx, userID, role)
 	}
 	return false, nil
+}
+
+func (m *mockAuthRepo) ListRoles(ctx context.Context, userID uint) (map[string]uint, error) {
+	if m.ListRolesFunc != nil {
+		return m.ListRolesFunc(ctx, userID)
+	}
+	return map[string]uint{}, nil
 }
 
 func (m *mockAuthRepo) HasPermission(ctx context.Context, userID uint, permissionHash string) (bool, error) {
@@ -198,9 +239,9 @@ func (m *mockMenuRepo) Count(ctx context.Context, menu *system.Menu) (int64, err
 
 // mockOperationRecordRepo is a mock implementation of the OperationRecordRepo interface.
 type mockOperationRecordRepo struct {
-	PaginationFunc  func(ctx context.Context, record *system.OperationRecord, page, pageSize int) ([]system.OperationRecord, int64, error)
-	InteractionFunc func(ctx context.Context, id string) (any, error)
-	CreateFunc      func(ctx context.Context, record *system.OperationRecord) error
+	PaginationFunc func(ctx context.Context, record *system.OperationRecord, page, pageSize int) ([]system.OperationRecord, int64, error)
+	DetailFunc     func(ctx context.Context, id string) (*repo.OperationRecordDetail, error)
+	CreateFunc     func(ctx context.Context, record *system.OperationRecord) error
 }
 
 func (m *mockOperationRecordRepo) Pagination(ctx context.Context, record *system.OperationRecord, page, pageSize int) ([]system.OperationRecord, int64, error) {
@@ -210,9 +251,9 @@ func (m *mockOperationRecordRepo) Pagination(ctx context.Context, record *system
 	return nil, 0, nil
 }
 
-func (m *mockOperationRecordRepo) Interaction(ctx context.Context, id string) (any, error) {
-	if m.InteractionFunc != nil {
-		return m.InteractionFunc(ctx, id)
+func (m *mockOperationRecordRepo) Detail(ctx context.Context, id string) (*repo.OperationRecordDetail, error) {
+	if m.DetailFunc != nil {
+		return m.DetailFunc(ctx, id)
 	}
 	return nil, nil
 }

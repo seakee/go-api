@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -45,7 +46,7 @@ type AccessToken struct {
 
 // AuthParam defines the structure of authentication parameters.
 type AuthParam struct {
-	Account     string `json:"account"`                        // User account
+	Identifier  string `json:"identifier"`                     // User identifier (email or phone; safe_code for totp)
 	GrantType   string `json:"grant_type" binding:"required"`  // Grant type (password: password login, feishu: Feishu login, wechat: WeChat Work login, totp: 2FA login)
 	State       string `json:"state"`                          // State, used for some OAuth flows
 	Credentials string `json:"credentials" binding:"required"` // Credentials (such as password, verification code, etc.)
@@ -53,8 +54,10 @@ type AuthParam struct {
 
 // safeCode defines the structure of a safe code.
 type safeCode struct {
-	UserID uint   `json:"user_id"` // User ID
-	Action string `json:"action"`  // Action type (e.g., "tfa" for two-factor authentication, "reset_password" for password reset)
+	UserID    uint   `json:"user_id,omitempty"` // User ID
+	Action    string `json:"action"`            // Action type (e.g., "tfa" for two-factor authentication, "reset_password" for password reset)
+	OauthType string `json:"oauth_type,omitempty"`
+	OauthID   string `json:"oauth_id,omitempty"`
 }
 
 // claims defines the structure of JWT claims.
@@ -74,8 +77,9 @@ type AuthService interface {
 	UpdateProfile(ctx context.Context, userID uint, userName, avatar string) (errCode int, err error)
 	UserMenuList(ctx context.Context, userID uint) (list system.MenuList, err error)
 	ResetPassword(ctx context.Context, sCode string, password string) (errCode int, err error)
-	UpdatePassword(ctx context.Context, userID uint, totpCode string, password string) (errCode int, err error)
-	UpdateAccount(ctx context.Context, userID uint, totpCode string, account string) (errCode int, err error)
+	UpdatePassword(ctx context.Context, userID uint, totpCode, oldPassword, password string) (errCode int, err error)
+	UpdateIdentifier(ctx context.Context, userID uint, totpCode, password, email, phone string) (errCode int, err error)
+	BindOAuth(ctx context.Context, sCode, identifier, password, totpCode string) (errCode int, err error)
 	EnableTfa(ctx context.Context, userID uint, totpCode string, totpKey string) (errCode int, err error)
 	DisableTfa(ctx context.Context, userID uint, totpCode string) (errCode int, err error)
 	TotpKey(ctx context.Context, userID uint) (key, qrCode string, errCode int, err error)
@@ -85,15 +89,16 @@ type AuthService interface {
 
 // authService implements the AuthService interface.
 type authService struct {
-	redis    *redis.Manager
-	logger   *logger.Manager
-	userRepo repo.UserRepo
-	totp     totp.Generator
-	authRepo repo.AuthRepo
-	menuRepo repo.MenuRepo
-	config   config.AdminConfig
-	request  *resty.Client
-	notify   *notify.Manager
+	redis           *redis.Manager
+	logger          *logger.Manager
+	userRepo        repo.UserRepo
+	totp            totp.Generator
+	authRepo        repo.AuthRepo
+	menuRepo        repo.MenuRepo
+	config          config.AdminConfig
+	request         *resty.Client
+	notify          *notify.Manager
+	parseSafeCodeFn func(ctx context.Context, code string) (*safeCode, error)
 }
 
 // OauthUrl retrieves the OAuth URL.
@@ -170,14 +175,14 @@ func (a authService) UpdateProfile(ctx context.Context, userID uint, userName, a
 	var user *system.User
 
 	if !isAvailableName(userName) {
-		errCode = e.InvalidAccount
+		errCode = e.InvalidUserName
 		return
 	}
 
 	// Get user information
 	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
 	if user == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
 		return
 	}
 
@@ -203,7 +208,7 @@ func (a authService) TfaStatus(ctx context.Context, userID uint) (enable bool, e
 	// Get user information
 	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
 	if user == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
 		return
 	}
 
@@ -227,13 +232,21 @@ func (a authService) TotpKey(ctx context.Context, userID uint) (key, qrCode stri
 	// Get user information
 	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
 	if user == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
 		return
 	}
 
 	key = util.RandBase32Str(32)
 
-	qrCode, err = a.totp.GenerateQRCodeBase64(user.Account, key)
+	label := user.Email
+	if label == "" {
+		label = user.Phone
+	}
+	if label == "" {
+		label = user.UserName
+	}
+
+	qrCode, err = a.totp.GenerateQRCodeBase64(label, key)
 
 	return
 }
@@ -258,7 +271,7 @@ func (a authService) DisableTfa(ctx context.Context, userID uint, totpCode strin
 	// Get user information
 	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
 	if user == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
 		return
 	}
 
@@ -312,31 +325,34 @@ func (a authService) EnableTfa(ctx context.Context, userID uint, totpCode string
 	return
 }
 
-// UpdateAccount updates the user account.
+// UpdateIdentifier updates user email/phone identifier.
 //
 // Parameters:
 //   - userID: User ID
 //   - totpCode: TOTP code
-//   - account: New account
+//   - password: Password for request validation when TFA is disabled
+//   - email: New email
+//   - phone: New phone
 //
 // Returns:
 //   - errCode: Error code
 //   - err: Error message
-func (a authService) UpdateAccount(ctx context.Context, userID uint, totpCode string, account string) (errCode int, err error) {
-	if !isAvailableName(account) {
-		errCode = e.InvalidAccount
+func (a authService) UpdateIdentifier(ctx context.Context, userID uint, totpCode, password, email, phone string) (errCode int, err error) {
+	email = normalizeEmail(email)
+	phone = normalizePhone(phone)
+
+	if email == "" && phone == "" {
+		errCode = e.IdentifierCantBeNull
 		return
 	}
 
-	// Check if account is empty
-	if account == "" {
-		errCode = e.AccountCantBeNull
+	if email != "" && !isValidEmail(email) {
+		errCode = e.InvalidIdentifier
 		return
 	}
 
-	// Check if safe code is empty
-	if totpCode == "" {
-		errCode = e.TotpCodeCanNotBeNull
+	if phone != "" && !isValidPhone(phone) {
+		errCode = e.InvalidIdentifier
 		return
 	}
 
@@ -344,27 +360,69 @@ func (a authService) UpdateAccount(ctx context.Context, userID uint, totpCode st
 	// Get user information
 	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
 	if user == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
 		return
 	}
 
-	// Verify TOTP code
-	if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
-		errCode = e.InvalidTotpCode
-		return
+	if user.TotpEnabled {
+		// Check if TOTP code is empty
+		if totpCode == "" {
+			errCode = e.TotpCodeCanNotBeNull
+			return
+		}
+
+		// Verify TOTP code
+		if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
+			errCode = e.InvalidTotpCode
+			return
+		}
+	} else {
+		// Check if password is empty
+		if password == "" {
+			errCode = e.IdentifierOrPasswordCanNotBeNull
+			return
+		}
+
+		// Verify password
+		if util.MD5(password+user.Salt) != user.Password {
+			errCode = e.IdentifierOrPasswordFail
+			return
+		}
 	}
 
-	var u *system.User
-	u, err = a.userRepo.Detail(ctx, &system.User{Account: account})
-	if u != nil && u.ID != user.ID {
-		errCode = e.AccountExists
-		return
+	if email != "" {
+		var userByEmail *system.User
+		userByEmail, err = a.userRepo.DetailByEmail(ctx, email)
+		if err != nil {
+			errCode = e.ERROR
+			return
+		}
+		if userByEmail != nil && userByEmail.ID != user.ID {
+			errCode = e.IdentifierExists
+			return
+		}
 	}
 
-	err = a.userRepo.Update(ctx, &system.User{Model: gorm.Model{ID: userID}, Account: account})
+	if phone != "" {
+		var userByPhone *system.User
+		userByPhone, err = a.userRepo.DetailByPhone(ctx, phone)
+		if err != nil {
+			errCode = e.ERROR
+			return
+		}
+		if userByPhone != nil && userByPhone.ID != user.ID {
+			errCode = e.IdentifierExists
+			return
+		}
+	}
+
+	err = a.userRepo.UpdateIdentifier(ctx, &system.User{Model: gorm.Model{ID: userID}, Email: email, Phone: phone})
 	if err != nil {
 		errCode = e.ERROR
+		return
 	}
+
+	errCode = e.SUCCESS
 
 	return
 }
@@ -374,21 +432,16 @@ func (a authService) UpdateAccount(ctx context.Context, userID uint, totpCode st
 // Parameters:
 //   - userID: User ID
 //   - totpCode: TOTP code
+//   - oldPassword: Old password
 //   - password: New password
 //
 // Returns:
 //   - errCode: Error code
 //   - err: Error message
-func (a authService) UpdatePassword(ctx context.Context, userID uint, totpCode string, password string) (errCode int, err error) {
+func (a authService) UpdatePassword(ctx context.Context, userID uint, totpCode, oldPassword, password string) (errCode int, err error) {
 	// Check if password is empty
 	if password == "" {
 		errCode = e.PasswordCanNotBeNull
-		return
-	}
-
-	// Check if safe code is empty
-	if totpCode == "" {
-		errCode = e.TotpCodeCanNotBeNull
 		return
 	}
 
@@ -396,14 +449,34 @@ func (a authService) UpdatePassword(ctx context.Context, userID uint, totpCode s
 	// Get user information
 	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
 	if user == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
 		return
 	}
 
-	// Verify TOTP code
-	if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
-		errCode = e.InvalidTotpCode
-		return
+	if user.TotpEnabled {
+		// Check if TOTP code is empty
+		if totpCode == "" {
+			errCode = e.TotpCodeCanNotBeNull
+			return
+		}
+
+		// Verify TOTP code
+		if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
+			errCode = e.InvalidTotpCode
+			return
+		}
+	} else {
+		// Check if old password is empty
+		if oldPassword == "" {
+			errCode = e.IdentifierOrPasswordCanNotBeNull
+			return
+		}
+
+		// Verify old password
+		if util.MD5(oldPassword+user.Salt) != user.Password {
+			errCode = e.IdentifierOrPasswordFail
+			return
+		}
 	}
 
 	err = a.userRepo.Update(ctx, &system.User{Model: gorm.Model{ID: userID}, Password: password})
@@ -438,7 +511,11 @@ func (a authService) ResetPassword(ctx context.Context, sCode string, password s
 
 	// Parse safe code
 	var sc *safeCode
-	sc, err = a.parseSafeCode(ctx, sCode)
+	if a.parseSafeCodeFn != nil {
+		sc, err = a.parseSafeCodeFn(ctx, sCode)
+	} else {
+		sc, err = a.parseSafeCode(ctx, sCode)
+	}
 	if err != nil {
 		errCode = e.InvalidSafeCode
 		return
@@ -459,7 +536,7 @@ func (a authService) ResetPassword(ctx context.Context, sCode string, password s
 	// Get user information
 	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: sc.UserID}})
 	if user == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
 		return
 	}
 
@@ -482,7 +559,13 @@ func (a authService) Profile(ctx context.Context, userID uint) (user map[string]
 	var u *system.User
 	u, err = a.userRepo.DetailByID(ctx, userID)
 	if u == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
+		return
+	}
+
+	userRoles, err := a.authRepo.ListRoles(ctx, userID)
+	if err != nil {
+		errCode = e.ERROR
 		return
 	}
 
@@ -490,9 +573,30 @@ func (a authService) Profile(ctx context.Context, userID uint) (user map[string]
 		"id":        u.ID,
 		"user_name": u.UserName,
 		"avatar":    u.Avatar,
+		"email":     u.Email,
+		"phone":     u.Phone,
+		"role_name": resolveRoleName(userRoles),
 	}
 
 	return
+}
+
+func resolveRoleName(roles map[string]uint) string {
+	_, hasSuperAdmin := roles["super_admin"]
+	if hasSuperAdmin {
+		return "超级管理员"
+	}
+
+	_, hasBase := roles["base"]
+	if hasBase && len(roles) == 1 {
+		return "普通用户"
+	}
+
+	if len(roles) > 0 {
+		return "管理员"
+	}
+
+	return "普通用户"
 }
 
 // HasPermission checks if user has the specified permission.
@@ -537,7 +641,7 @@ func (a authService) HasRole(ctx context.Context, userID uint, role string) (boo
 // Example:
 //
 //	authParam := &AuthParam{
-//	    Account: "user@example.com",
+//	    Identifier: "user@example.com",
 //	    GrantType: "password",
 //	    Credentials: "password123",
 //	}
@@ -552,9 +656,9 @@ func (a authService) Token(ctx context.Context, param *AuthParam) (token AccessT
 	// Verify based on different grant types
 	switch param.GrantType {
 	case "password":
-		user, errCode, err = a.verifyByPassword(ctx, param.Account, param.Credentials)
+		user, errCode, err = a.verifyByPassword(ctx, param.Identifier, param.Credentials)
 	case "totp":
-		user, errCode, err = a.verifyByTotp(ctx, param.Credentials, param.Account)
+		user, errCode, err = a.verifyByTotp(ctx, param.Credentials, param.Identifier)
 	case "feishu":
 		user, errCode, err = a.verifyByFeishu(ctx, param.Credentials, param.State)
 	case "wechat":
@@ -596,6 +700,11 @@ func (a authService) Token(ctx context.Context, param *AuthParam) (token AccessT
 		if err != nil {
 			errCode = e.ERROR
 		}
+	case errCode == e.NeedBindOAuth:
+		if user != nil {
+			token.SafeCode = user.TotpKey
+		}
+		return
 	}
 
 	return
@@ -637,6 +746,22 @@ func (a authService) verifyByFeishu(ctx context.Context, code, state string) (us
 	}
 
 	user, err = a.userRepo.Detail(ctx, &system.User{FeishuId: userID})
+	if err != nil {
+		errCode = e.ERROR
+		return
+	}
+
+	if user == nil {
+		var sc string
+		sc, err = a.generateSafeCode(ctx, safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: userID})
+		if err != nil {
+			errCode = e.ERROR
+			return
+		}
+
+		errCode = e.NeedBindOAuth
+		return &system.User{TotpKey: sc}, errCode, nil
+	}
 
 	return
 }
@@ -762,6 +887,22 @@ func (a authService) verifyByWechat(ctx context.Context, code, state string) (us
 	}
 
 	user, err = a.userRepo.Detail(ctx, &system.User{WechatId: userID})
+	if err != nil {
+		errCode = e.ERROR
+		return
+	}
+
+	if user == nil {
+		var sc string
+		sc, err = a.generateSafeCode(ctx, safeCode{Action: "oauth_bind", OauthType: "wechat", OauthID: userID})
+		if err != nil {
+			errCode = e.ERROR
+			return
+		}
+
+		errCode = e.NeedBindOAuth
+		return &system.User{TotpKey: sc}, errCode, nil
+	}
 
 	return
 }
@@ -878,24 +1019,43 @@ func (a authService) getWechatUserID(ctx context.Context, accessToken, code stri
 //
 // Parameters:
 //   - ctx: Context
-//   - account: User account
+//   - identifier: User identifier (email or phone)
 //   - password: User password
 //
 // Returns:
 //   - user: User information upon successful verification
 //   - errCode: Error code
 //   - err: Error message
-func (a authService) verifyByPassword(ctx context.Context, account, password string) (user *system.User, errCode int, err error) {
-	// Check if account and password are empty
-	if account == "" || password == "" {
-		errCode = e.AccountOrPasswordCanNotBeNull
+func (a authService) verifyByPassword(ctx context.Context, identifier, password string) (user *system.User, errCode int, err error) {
+	identifier = normalizeEmail(identifier)
+	if isPhoneIdentifier(identifier) {
+		identifier = normalizePhone(identifier)
+	}
+
+	// Check if identifier and password are empty
+	if identifier == "" || password == "" {
+		errCode = e.IdentifierOrPasswordCanNotBeNull
+		return
+	}
+
+	if !isEmailIdentifier(identifier) && !isPhoneIdentifier(identifier) {
+		errCode = e.InvalidIdentifier
 		return
 	}
 
 	// Query user information
-	user, err = a.userRepo.Detail(ctx, &system.User{Account: account, Status: 1})
+	user, err = a.userRepo.DetailByIdentifier(ctx, identifier)
+	if err != nil {
+		errCode = e.ERROR
+		return
+	}
+
+	if user != nil && user.Status != 1 {
+		user = nil
+	}
+
 	if user == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
 		return
 	}
 
@@ -903,7 +1063,7 @@ func (a authService) verifyByPassword(ctx context.Context, account, password str
 	md5Password := util.MD5(password + user.Salt)
 
 	if user.Password != md5Password {
-		errCode = e.AccountOrPasswordFail
+		errCode = e.IdentifierOrPasswordFail
 		return
 	}
 
@@ -966,7 +1126,7 @@ func (a authService) verifyByTotp(ctx context.Context, totpCode, sCode string) (
 		return
 	}
 	if user == nil {
-		errCode = e.AccountNotFound
+		errCode = e.UserNotFound
 		return
 	}
 	// Verify TOTP code
@@ -1030,6 +1190,89 @@ func (a authService) VerifyToken(tokenString string) (userName string, userID ui
 	}
 
 	return "", 0, errors.New("invalid token")
+}
+
+func (a authService) BindOAuth(ctx context.Context, sCode, identifier, password, totpCode string) (errCode int, err error) {
+	if sCode == "" {
+		return e.SafeCodeCanNotBeNull, nil
+	}
+
+	identifier = strings.TrimSpace(identifier)
+	if identifier == "" {
+		return e.IdentifierCantBeNull, nil
+	}
+
+	var sc *safeCode
+	if a.parseSafeCodeFn != nil {
+		sc, err = a.parseSafeCodeFn(ctx, sCode)
+	} else {
+		sc, err = a.parseSafeCode(ctx, sCode)
+	}
+	if err != nil || sc == nil || sc.Action != "oauth_bind" {
+		return e.InvalidSafeCode, err
+	}
+
+	if sc.OauthType == "" || sc.OauthID == "" {
+		return e.InvalidSafeCode, nil
+	}
+
+	var user *system.User
+	user, err = a.userRepo.DetailByIdentifier(ctx, identifier)
+	if err != nil {
+		return e.ERROR, err
+	}
+
+	if user == nil || user.Status != 1 {
+		return e.UserNotFound, nil
+	}
+
+	if user.TotpEnabled {
+		if totpCode == "" {
+			return e.TotpCodeCanNotBeNull, nil
+		}
+
+		if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
+			return e.InvalidTotpCode, nil
+		}
+	} else {
+		if password == "" {
+			return e.IdentifierOrPasswordCanNotBeNull, nil
+		}
+
+		if util.MD5(password+user.Salt) != user.Password {
+			return e.IdentifierOrPasswordFail, nil
+		}
+	}
+
+	if sc.OauthType == "feishu" {
+		bindUser, bindErr := a.userRepo.Detail(ctx, &system.User{FeishuId: sc.OauthID})
+		if bindErr != nil {
+			return e.ERROR, bindErr
+		}
+		if bindUser != nil && bindUser.ID != user.ID {
+			return e.IdentifierConflict, nil
+		}
+
+		err = a.userRepo.Update(ctx, &system.User{Model: gorm.Model{ID: user.ID}, FeishuId: sc.OauthID})
+	} else if sc.OauthType == "wechat" {
+		bindUser, bindErr := a.userRepo.Detail(ctx, &system.User{WechatId: sc.OauthID})
+		if bindErr != nil {
+			return e.ERROR, bindErr
+		}
+		if bindUser != nil && bindUser.ID != user.ID {
+			return e.IdentifierConflict, nil
+		}
+
+		err = a.userRepo.Update(ctx, &system.User{Model: gorm.Model{ID: user.ID}, WechatId: sc.OauthID})
+	} else {
+		return e.InvalidOauthState, nil
+	}
+
+	if err != nil {
+		return e.ERROR, err
+	}
+
+	return e.SUCCESS, nil
 }
 
 // generateSafeCode generates a safe code.
