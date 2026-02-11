@@ -30,7 +30,6 @@ type OperationRecord struct {
 	Agent        string  `gorm:"column:agent;type:varchar(512)" json:"agent"`
 	ErrorMessage string  `gorm:"column:error_message;type:text" json:"error_message"`
 	UserID       uint    `gorm:"column:user_id" json:"user_id"`
-	UserName     string  `gorm:"column:user_name;type:varchar(50)" json:"user_name"`
 	Params       string  `gorm:"column:params;type:text" json:"params"`
 	Resp         string  `gorm:"column:resp;type:text" json:"resp"`
 	TraceID      string  `gorm:"column:trace_id;type:varchar(64)" json:"trace_id"`
@@ -158,19 +157,28 @@ func (o *OperationRecord) Updates(ctx context.Context, db *gorm.DB, updates map[
 func (o *OperationRecord) Pagination(ctx context.Context, db *gorm.DB, page, size int) ([]OperationRecord, int64, error) {
 	var records []OperationRecord
 
-	query := db.WithContext(ctx)
+	query := db.WithContext(ctx).Model(&OperationRecord{})
 	if o.queryCondition != "" {
 		query = query.Where(o.queryCondition, o.queryArgs...)
+
+		queryFilter := *o
+		queryFilter.queryCondition = ""
+		queryFilter.queryArgs = nil
+		query = query.Where(&queryFilter)
 	} else {
 		query = query.Where(o)
 	}
 
 	var total int64
-	if err := query.Model(&OperationRecord{}).Count(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("count failed: %w", err)
 	}
 
-	if err := query.Order("created_at desc").Offset((page-1)*size).Limit(size).Find(&records).Error; err != nil {
+	if err := query.Session(&gorm.Session{}).
+		Order("created_at desc").
+		Offset((page - 1) * size).
+		Limit(size).
+		Find(&records).Error; err != nil {
 		return nil, 0, fmt.Errorf("paginate failed: %w", err)
 	}
 
@@ -201,8 +209,6 @@ func (o *OperationRecord) hasCondition() bool {
 	case o.ErrorMessage != "":
 		return true
 	case o.UserID != 0:
-		return true
-	case o.UserName != "":
 		return true
 	case o.Params != "":
 		return true

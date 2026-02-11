@@ -95,13 +95,13 @@ func (m middleware) createOperationRecord(c *gin.Context, params, traceID string
 		ErrorMessage: writer.errMessage,
 		TraceID:      traceID,
 	}
+	if writer.hasStatusCode {
+		record.Status = writer.statusCode
+	}
 	record.CreatedAt = startTime
 
 	if userID, exists := c.Get("user_id"); exists {
 		record.UserID = userID.(uint)
-	}
-	if userName, exists := c.Get("user_name"); exists {
-		record.UserName = userName.(string)
 	}
 
 	return record
@@ -110,9 +110,11 @@ func (m middleware) createOperationRecord(c *gin.Context, params, traceID string
 // responseBodyWriter is a custom response body writer.
 type responseBodyWriter struct {
 	gin.ResponseWriter
-	body       *bytes.Buffer
-	logger     *logger.Manager
-	errMessage string
+	body          *bytes.Buffer
+	logger        *logger.Manager
+	errMessage    string
+	statusCode    int
+	hasStatusCode bool
 }
 
 // newResponseBodyWriter creates a new response body writer.
@@ -127,7 +129,11 @@ func newResponseBodyWriter(writer gin.ResponseWriter, logger *logger.Manager) *r
 // Write implements the io.Writer interface for writing response body and recording error messages.
 func (r *responseBodyWriter) Write(b []byte) (int, error) {
 	r.body.Write(b)
-	if code := jsoniter.Get(b, "code").ToInt(); code != 0 {
+	if codeVal := jsoniter.Get(b, "code"); codeVal.ValueType() == jsoniter.NumberValue {
+		r.statusCode = codeVal.ToInt()
+		r.hasStatusCode = true
+	}
+	if r.hasStatusCode && r.statusCode != 0 {
 		r.errMessage = jsoniter.Get(b, "msg").ToString()
 	}
 	return r.ResponseWriter.Write(b)

@@ -17,6 +17,6 @@ func RegisterRoutes(api *gin.RouterGroup, ctx *http.Context) {
 	service.RegisterRoutes(serviceAPI, ctx)
 
 	// Register Admin related routes
-	adminAPI := api.Group("admin", ctx.Middleware.SaveOperationRecord())
+	adminAPI := api.Group("admin")
 	admin.RegisterRoutes(adminAPI, ctx)
 }

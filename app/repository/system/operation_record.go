@@ -19,8 +19,14 @@ const (
 // OperationRecordRepo defines the operation record repository interface.
 type OperationRecordRepo interface {
 	Pagination(ctx context.Context, operationRecord *system.OperationRecord, page, pageSize int) ([]system.OperationRecord, int64, error)
-	Interaction(ctx context.Context, id string) (interface{}, error)
+	Detail(ctx context.Context, id string) (*OperationRecordDetail, error)
 	Create(ctx context.Context, operationRecord *system.OperationRecord) error
+}
+
+type OperationRecordDetail struct {
+	Record *system.OperationRecord
+	Params map[string]interface{}
+	Resp   map[string]interface{}
 }
 
 type operationRecordRepo struct {
@@ -33,7 +39,7 @@ func (opr *operationRecordRepo) Pagination(ctx context.Context, operationRecord 
 	return operationRecord.Pagination(ctx, opr.db, page, pageSize)
 }
 
-func (opr *operationRecordRepo) Interaction(ctx context.Context, id string) (interface{}, error) {
+func (opr *operationRecordRepo) Detail(ctx context.Context, id string) (*OperationRecordDetail, error) {
 	operationRecord := &system.OperationRecord{}
 
 	record, err := operationRecord.FindByID(ctx, opr.db, id)
@@ -44,15 +50,11 @@ func (opr *operationRecordRepo) Interaction(ctx context.Context, id string) (int
 		return nil, nil
 	}
 
-	interaction := struct {
-		Params map[string]interface{} `json:"params"`
-		Resp   map[string]interface{} `json:"resp"`
-	}{}
-
-	interaction.Params = parseParams(record.Params)
-	interaction.Resp = parseResp(record.Resp)
-
-	return interaction, nil
+	return &OperationRecordDetail{
+		Record: record,
+		Params: parseParams(record.Params),
+		Resp:   parseResp(record.Resp),
+	}, nil
 }
 
 func (opr *operationRecordRepo) Create(ctx context.Context, operationRecord *system.OperationRecord) error {

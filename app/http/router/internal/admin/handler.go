@@ -12,7 +12,7 @@ func RegisterRoutes(api *gin.RouterGroup, ctx *http.Context) {
 		ctx.I18n.JSON(c, 0, nil, nil)
 	})
 
-	systemAPI := api.Group("system", ctx.Middleware.CheckAdminAuth())
+	systemAPI := api.Group("system", ctx.Middleware.SaveOperationRecord(), ctx.Middleware.CheckAdminAuth())
 	system.RegisterRoutes(systemAPI, ctx)
 
 	authAPI := api.Group("auth")

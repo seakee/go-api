@@ -10,5 +10,5 @@ func registerRecordRoutes(api *gin.RouterGroup, ctx *http.Context) {
 	handler := record.NewHandler(ctx)
 
 	api.GET("paginate", handler.Paginate())
-	api.GET("interaction", handler.Interaction())
+	api.GET("detail", handler.Detail())
 }

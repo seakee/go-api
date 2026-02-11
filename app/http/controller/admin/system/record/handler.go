@@ -14,7 +14,7 @@ type Handler interface {
 	i()
 
 	Paginate() gin.HandlerFunc
-	Interaction() gin.HandlerFunc
+	Detail() gin.HandlerFunc
 }
 
 type handler struct {
@@ -28,15 +28,14 @@ func (h handler) Paginate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		errCode := e.ERROR
 		var req struct {
-			ID       string `form:"id"`
-			Path     string `form:"path"`
-			UserID   uint   `form:"user_id"`
-			UserName string `form:"user_name"`
-			Page     int    `form:"page"`
-			Size     int    `form:"size"`
-			IP       string `form:"ip"`
-			Status   int    `form:"status"`
-			Method   string `form:"method"`
+			Path    string `form:"path"`
+			UserID  uint   `form:"user_id"`
+			Page    int    `form:"page"`
+			Size    int    `form:"size"`
+			IP      string `form:"ip"`
+			Status  *int   `form:"status"`
+			Method  string `form:"method"`
+			TraceID string `form:"trace_id"`
 		}
 		if err := c.ShouldBind(&req); err != nil {
 			h.I18n.JSON(c, e.InvalidParams, nil, err)
@@ -44,19 +43,15 @@ func (h handler) Paginate() gin.HandlerFunc {
 		}
 
 		r := &systemModel.OperationRecord{
-			Path:     req.Path,
-			UserID:   req.UserID,
-			UserName: req.UserName,
-			IP:       req.IP,
-			Status:   req.Status,
-			Method:   req.Method,
+			Path:    req.Path,
+			UserID:  req.UserID,
+			IP:      req.IP,
+			Method:  req.Method,
+			TraceID: req.TraceID,
 		}
 
-		if req.ID != "" {
-			if err := r.SetID(req.ID); err != nil {
-				h.I18n.JSON(c, e.InvalidParams, nil, err)
-				return
-			}
+		if req.Status != nil {
+			r = r.Where("status = ?", *req.Status)
 		}
 
 		list, total, err := h.service.Paginate(
@@ -65,6 +60,7 @@ func (h handler) Paginate() gin.HandlerFunc {
 			req.Page,
 			req.Size,
 		)
+
 		if err == nil {
 			errCode = e.SUCCESS
 		}
@@ -76,7 +72,7 @@ func (h handler) Paginate() gin.HandlerFunc {
 	}
 }
 
-func (h handler) Interaction() gin.HandlerFunc {
+func (h handler) Detail() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			ID string `form:"id"`
@@ -94,9 +90,14 @@ func (h handler) Interaction() gin.HandlerFunc {
 			return
 		}
 
-		data, err := h.service.Interaction(ctx, req.ID)
+		data, err := h.service.Detail(ctx, req.ID)
 		if err != nil {
 			h.I18n.JSON(c, e.ERROR, nil, err)
+			return
+		}
+
+		if data == nil {
+			h.I18n.JSON(c, e.SUCCESS, nil, nil)
 			return
 		}
 
