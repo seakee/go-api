@@ -17,5 +17,6 @@ func registerRoleRoutes(api *gin.RouterGroup, ctx *http.Context) {
 	api.GET("paginate", handler.Paginate())
 
 	api.GET("permission", handler.Permissions())
+	api.GET("permission/menu-tree", handler.PermissionMenuTree())
 	api.PUT("permission", handler.UpdatePermission())
 }

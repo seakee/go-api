@@ -23,6 +23,19 @@ type RoleService interface {
 
 	UpdatePermission(ctx context.Context, roleId uint, permissionIds []uint) (errCode int, err error)
 	PermissionList(ctx context.Context, roleId uint) (list []uint, err error)
+	PermissionMenuTree(ctx context.Context, roleId uint) (list []RoleMenuPermissionNode, errCode int, err error)
+}
+
+type RoleMenuPermissionNode struct {
+	ID           uint                     `json:"id"`
+	Name         string                   `json:"name"`
+	Path         string                   `json:"path"`
+	PermissionID uint                     `json:"permission_id"`
+	ParentID     uint                     `json:"parent_id"`
+	Icon         string                   `json:"icon"`
+	Sort         int                      `json:"sort"`
+	Checked      bool                     `json:"checked"`
+	Children     []RoleMenuPermissionNode `json:"children,omitempty"`
 }
 
 type roleService struct {
@@ -31,6 +44,54 @@ type roleService struct {
 	roleRepo           repo.RoleRepo
 	roleUserRepo       repo.RoleUserRepo
 	permissionRoleRepo repo.PermissionRoleRepo
+	menuRepo           repo.MenuRepo
+}
+
+func (r roleService) PermissionMenuTree(ctx context.Context, roleId uint) (list []RoleMenuPermissionNode, errCode int, err error) {
+	role, err := r.roleRepo.DetailByID(ctx, roleId)
+	if role == nil {
+		return nil, e.RoleNotFound, err
+	}
+
+	menus, err := r.menuRepo.List(ctx)
+	if err != nil {
+		return nil, e.ERROR, err
+	}
+
+	permissionIDs, err := r.permissionRoleRepo.ListByRoleID(ctx, roleId)
+	if err != nil {
+		return nil, e.ERROR, err
+	}
+
+	permissionSet := make(map[uint]struct{}, len(permissionIDs))
+	for _, permissionID := range permissionIDs {
+		permissionSet[permissionID] = struct{}{}
+	}
+
+	list = buildRoleMenuPermissionTree(menus, permissionSet)
+
+	return list, e.SUCCESS, nil
+}
+
+func buildRoleMenuPermissionTree(menus system.MenuList, permissionSet map[uint]struct{}) []RoleMenuPermissionNode {
+	list := make([]RoleMenuPermissionNode, len(menus))
+	for i, menu := range menus {
+		_, checked := permissionSet[menu.PermissionId]
+
+		list[i] = RoleMenuPermissionNode{
+			ID:           menu.ID,
+			Name:         menu.Name,
+			Path:         menu.Path,
+			PermissionID: menu.PermissionId,
+			ParentID:     menu.ParentId,
+			Icon:         menu.Icon,
+			Sort:         menu.Sort,
+			Checked:      checked,
+			Children:     buildRoleMenuPermissionTree(menu.Children, permissionSet),
+		}
+	}
+
+	return list
 }
 
 func (r roleService) List(ctx context.Context) (list []gin.H, err error) {
@@ -147,5 +208,6 @@ func NewRoleService(redis *redis.Manager, logger *logger.Manager, db *gorm.DB) R
 		roleRepo:           repo.NewRoleRepo(db, redis, logger),
 		roleUserRepo:       repo.NewRoleUserRepo(db, redis, logger),
 		permissionRoleRepo: repo.NewPermissionRoleRepo(db, redis, logger),
+		menuRepo:           repo.NewMenuRepo(db, redis, logger),
 	}
 }

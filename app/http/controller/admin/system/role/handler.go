@@ -21,6 +21,7 @@ type Handler interface {
 	Delete() gin.HandlerFunc
 	Update() gin.HandlerFunc
 	Permissions() gin.HandlerFunc
+	PermissionMenuTree() gin.HandlerFunc
 	UpdatePermission() gin.HandlerFunc
 }
 
@@ -61,6 +62,32 @@ func (h handler) Permissions() gin.HandlerFunc {
 		}
 
 		h.I18n.JSON(c, errCode, data, err)
+	}
+}
+
+func (h handler) PermissionMenuTree() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var err error
+		var data []system.RoleMenuPermissionNode
+		var rid uint64
+
+		roleId := c.Query("role_id")
+		errCode := e.InvalidParams
+
+		ctx := h.Context(c)
+
+		if roleId != "" {
+			errCode = e.ERROR
+			rid, err = strconv.ParseUint(roleId, 10, 64)
+			if err != nil {
+				h.I18n.JSON(c, e.InvalidParams, nil, err)
+				return
+			}
+
+			data, errCode, err = h.service.PermissionMenuTree(ctx, uint(rid))
+		}
+
+		h.I18n.JSON(c, errCode, gin.H{"items": data}, err)
 	}
 }
 
