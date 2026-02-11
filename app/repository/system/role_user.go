@@ -93,13 +93,16 @@ func (rup roleUserRepo) UpdateUserRole(ctx context.Context, userID uint, roles [
 
 // getBaseRole retrieves the base role.
 func (rup roleUserRepo) getBaseRole(ctx context.Context) (*system.Role, error) {
-	var baseRole system.Role
-	err := rup.db.WithContext(ctx).Where("name = ?", "base").First(&baseRole).Error
+	baseRole := &system.Role{}
+	result, err := baseRole.Where("name = ?", "base").First(ctx, rup.db)
 	if err != nil {
 		return nil, err
 	}
+	if result == nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 
-	return &baseRole, nil
+	return result, nil
 }
 
 func (rup roleUserRepo) ListByUserID(ctx context.Context, userID uint) (roles []uint, err error) {

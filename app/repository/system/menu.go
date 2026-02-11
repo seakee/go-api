@@ -42,12 +42,13 @@ func (m menuRepo) UserMenuList(ctx context.Context, userID uint, isSuperAdmin bo
 }
 
 func (m menuRepo) getAllMenus(ctx context.Context) (system.MenuList, error) {
-	var menuList system.MenuList
-	if err := m.db.WithContext(ctx).Find(&menuList).Error; err != nil {
+	menu := &system.Menu{}
+	menuList, err := menu.List(ctx, m.db)
+	if err != nil {
 		return nil, fmt.Errorf("failed to get all menus: %w", err)
 	}
 
-	return menuList.GenTree(), nil
+	return system.MenuList(menuList).GenTree(), nil
 }
 
 func (m menuRepo) getUserSpecificMenus(ctx context.Context, userID uint) (system.MenuList, error) {
@@ -107,8 +108,9 @@ func (m menuRepo) getRolePermissionIDs(ctx context.Context, roleIDs []uint) ([]u
 }
 
 func (m menuRepo) getUserMenusByPermissions(ctx context.Context, permissionIDs []uint) (system.MenuList, error) {
-	var userMenus system.MenuList
-	if err := m.db.WithContext(ctx).Where("permission_id IN ?", permissionIDs).Find(&userMenus).Error; err != nil {
+	menu := &system.Menu{}
+	userMenus, err := menu.ListByArgs(ctx, m.db, "permission_id IN ?", permissionIDs)
+	if err != nil {
 		return nil, fmt.Errorf("failed to get user menus: %w", err)
 	}
 
@@ -116,14 +118,17 @@ func (m menuRepo) getUserMenusByPermissions(ctx context.Context, permissionIDs [
 }
 
 func (m menuRepo) getAllMenuIDs(ctx context.Context, userMenus system.MenuList) ([]uint, error) {
-	var allMenus system.MenuList
-	if err := m.db.WithContext(ctx).Find(&allMenus).Error; err != nil {
+	menu := &system.Menu{}
+	allMenus, err := menu.List(ctx, m.db)
+	if err != nil {
 		return nil, fmt.Errorf("failed to get all menus: %w", err)
 	}
 
+	allMenuList := system.MenuList(allMenus)
+
 	menuIdsOfRole := make(map[uint]struct{})
 	for _, menu := range userMenus {
-		allMenus.AllUserMenuIds(menu.ID, menuIdsOfRole)
+		allMenuList.AllUserMenuIds(menu.ID, menuIdsOfRole)
 	}
 
 	menuIDs := make([]uint, 0, len(menuIdsOfRole))
@@ -135,12 +140,13 @@ func (m menuRepo) getAllMenuIDs(ctx context.Context, userMenus system.MenuList) 
 }
 
 func (m menuRepo) getMenusByIDs(ctx context.Context, menuIDs []uint) (system.MenuList, error) {
-	var userMenus system.MenuList
-	if err := m.db.WithContext(ctx).Where("id IN ?", menuIDs).Find(&userMenus).Error; err != nil {
+	menu := &system.Menu{}
+	userMenus, err := menu.ListByArgs(ctx, m.db, "id IN ?", menuIDs)
+	if err != nil {
 		return nil, fmt.Errorf("failed to get menus by IDs: %w", err)
 	}
 
-	return userMenus.GenTree(), nil
+	return system.MenuList(userMenus).GenTree(), nil
 }
 
 func (m menuRepo) List(ctx context.Context) (system.MenuList, error) {
