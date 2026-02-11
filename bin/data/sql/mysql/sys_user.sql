@@ -1,7 +1,8 @@
 CREATE TABLE `sys_user`
 (
     `id`           int unsigned NOT NULL AUTO_INCREMENT,
-    `account`      varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+    `email`        varchar(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+    `phone`        varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci  DEFAULT NULL,
     `password`     char(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci     DEFAULT NULL,
     `salt`         char(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci                                                     DEFAULT NULL,
     `totp_key`     char(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci     DEFAULT NULL,
@@ -16,5 +17,6 @@ CREATE TABLE `sys_user`
     `updated_at`   timestamp    NULL                                             DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     `deleted_at`   timestamp    NULL                                             DEFAULT NULL,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `account` (`account`)
+    UNIQUE KEY `uk_sys_user_email` (`email`),
+    UNIQUE KEY `uk_sys_user_phone` (`phone`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;

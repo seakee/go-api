@@ -1,7 +1,8 @@
 CREATE TABLE sys_user
 (
     id           bigserial PRIMARY KEY,
-    account      varchar(200) DEFAULT NULL,
+    email        varchar(200) DEFAULT NULL,
+    phone        varchar(30)  DEFAULT NULL,
     password     char(32)     DEFAULT NULL,
     salt         char(32)     DEFAULT NULL,
     totp_key     char(32)     DEFAULT NULL,
@@ -17,7 +18,8 @@ CREATE TABLE sys_user
     deleted_at   timestamp    DEFAULT NULL
 );
 
-CREATE UNIQUE INDEX idx_sys_user_account ON sys_user (account);
+CREATE UNIQUE INDEX uk_sys_user_email ON sys_user (email);
+CREATE UNIQUE INDEX uk_sys_user_phone ON sys_user (phone);
 
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN
