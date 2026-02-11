@@ -119,6 +119,7 @@ Content-Type: application/json
 | Role | PUT | `/go-api/internal/admin/system/role` | 更新角色 |
 | Role | DELETE | `/go-api/internal/admin/system/role` | 删除角色 |
 | Role | GET | `/go-api/internal/admin/system/role/permission` | 角色权限 ID 列表 |
+| Role | GET | `/go-api/internal/admin/system/role/permission/menu-tree` | 角色菜单权限树 |
 | Role | PUT | `/go-api/internal/admin/system/role/permission` | 更新角色权限 |
 | User | GET | `/go-api/internal/admin/system/user/paginate` | 用户分页 |
 | User | GET | `/go-api/internal/admin/system/user` | 用户详情 |
@@ -130,7 +131,7 @@ Content-Type: application/json
 | User | PUT | `/go-api/internal/admin/system/user/password/reset` | 管理员重置密码 |
 | User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | 管理员关闭 TFA |
 | Record | GET | `/go-api/internal/admin/system/record/paginate` | 操作记录分页 |
-| Record | GET | `/go-api/internal/admin/system/record/interaction` | 操作交互详情 |
+| Record | GET | `/go-api/internal/admin/system/record/detail` | 操作记录详情 |
 
 ##### 核心数据结构（当前实现字段）
 
@@ -191,6 +192,33 @@ Content-Type: application/json
 }
 ```
 
+`RoleMenuPermissionNode` 项（`/role/permission/menu-tree`）：
+```json
+{
+  "id": 1,
+  "name": "系统管理",
+  "path": "/system",
+  "permission_id": 0,
+  "parent_id": 0,
+  "icon": "setting",
+  "sort": 1,
+  "checked": false,
+  "children": [
+    {
+      "id": 2,
+      "name": "用户管理",
+      "path": "/system/user",
+      "permission_id": 101,
+      "parent_id": 1,
+      "icon": "user",
+      "sort": 1,
+      "checked": true,
+      "children": []
+    }
+  ]
+}
+```
+
 `OperationRecord` 项（`/record/paginate`）：
 ```json
 {
@@ -213,9 +241,21 @@ Content-Type: application/json
 }
 ```
 
-`OperationInteraction`（`/record/interaction`）：
+`OperationRecordDetail`（`/record/detail`）：
 ```json
 {
+  "id": 1024,
+  "method": "POST",
+  "path": "/go-api/internal/admin/system/user",
+  "ip": "127.0.0.1",
+  "status": 0,
+  "user_id": 1,
+  "user_name": "admin",
+  "trace_id": "trace-xxx",
+  "created_at": "2026-02-06T10:00:00+08:00",
+  "latency": 0.031,
+  "agent": "Mozilla/5.0",
+  "error_message": "",
   "params": {
     "user_name": "demo"
   },
@@ -232,6 +272,8 @@ Content-Type: application/json
 - `record` 使用 `page` + `size`（默认 `1` + `10`，最大 `100`），返回 `{ "items": [...], "total": n }`
 
 > 更完整的请求参数、响应示例和模块错误码请查看 `docs/Admin-System-Management.md`。
+>
+> 管理端鉴权接口请查看 `docs/Admin-Auth.md`。其中密码相关字段（`/go-api/internal/admin/auth/token` 的 `grant_type=password`、`/password/reset`、`/password`、以及未开启 TFA 时的 `/identifier`）前端必须传 `md5(明文密码)`。
 
 ### 健康检查端点
 

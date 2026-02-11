@@ -144,7 +144,7 @@ System management APIs are mounted at `/go-api/internal/admin/system`.
 | User | PUT | `/go-api/internal/admin/system/user/password/reset` | Admin reset password |
 | User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | Admin disable TFA |
 | Record | GET | `/go-api/internal/admin/system/record/paginate` | Operation record pagination |
-| Record | GET | `/go-api/internal/admin/system/record/interaction` | Operation interaction detail |
+| Record | GET | `/go-api/internal/admin/system/record/detail` | Operation record detail |
 
 ##### Core Data Structures (actual fields)
 
@@ -227,9 +227,21 @@ System management APIs are mounted at `/go-api/internal/admin/system`.
 }
 ```
 
-`OperationInteraction` (`/record/interaction`):
+`OperationRecordDetail` (`/record/detail`):
 ```json
 {
+  "id": 1024,
+  "method": "POST",
+  "path": "/go-api/internal/admin/system/user",
+  "ip": "127.0.0.1",
+  "status": 0,
+  "user_id": 1,
+  "user_name": "admin",
+  "trace_id": "trace-xxx",
+  "created_at": "2026-02-06T10:00:00+08:00",
+  "latency": 0.031,
+  "agent": "Mozilla/5.0",
+  "error_message": "",
   "params": {
     "user_name": "demo"
   },
@@ -246,6 +258,8 @@ System management APIs are mounted at `/go-api/internal/admin/system`.
 - `record` uses query `page` + `size` (default `1` + `10`, max `100`), response `{ "items": [...], "total": n }`
 
 > Full request/response examples and module-level error codes are maintained in `docs/Admin-System-Management.md`.
+>
+> Admin auth endpoints are documented in `docs/Admin-Auth.md`. For password-related fields in admin auth flows (`/go-api/internal/admin/auth/token` with `grant_type=password`, `/password/reset`, `/password`, and `/identifier` when TFA is disabled), clients must send `md5(plaintext password)`.
 
 #### Health Check Endpoints
 
@@ -655,7 +669,7 @@ Content-Type: application/json
 | User | PUT | `/go-api/internal/admin/system/user/password/reset` | 管理员重置密码 |
 | User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | 管理员关闭 TFA |
 | Record | GET | `/go-api/internal/admin/system/record/paginate` | 操作记录分页 |
-| Record | GET | `/go-api/internal/admin/system/record/interaction` | 操作交互详情 |
+| Record | GET | `/go-api/internal/admin/system/record/detail` | 操作记录详情 |
 
 ##### 核心数据结构（当前实现字段）
 
@@ -738,9 +752,21 @@ Content-Type: application/json
 }
 ```
 
-`OperationInteraction`（`/record/interaction`）：
+`OperationRecordDetail`（`/record/detail`）：
 ```json
 {
+  "id": 1024,
+  "method": "POST",
+  "path": "/go-api/internal/admin/system/user",
+  "ip": "127.0.0.1",
+  "status": 0,
+  "user_id": 1,
+  "user_name": "admin",
+  "trace_id": "trace-xxx",
+  "created_at": "2026-02-06T10:00:00+08:00",
+  "latency": 0.031,
+  "agent": "Mozilla/5.0",
+  "error_message": "",
   "params": {
     "user_name": "demo"
   },
@@ -757,6 +783,8 @@ Content-Type: application/json
 - `record` 使用 `page` + `size`（默认 `1` + `10`，最大 `100`），返回 `{ "items": [...], "total": n }`
 
 > 更完整的请求参数、响应示例和模块错误码请查看 `docs/Admin-System-Management.md`。
+>
+> 管理端鉴权接口请查看 `docs/Admin-Auth.md`。其中密码相关字段（`/go-api/internal/admin/auth/token` 的 `grant_type=password`、`/password/reset`、`/password`、以及未开启 TFA 时的 `/identifier`）前端必须传 `md5(明文密码)`。
 
 #### 健康检查端点
 

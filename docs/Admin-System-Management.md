@@ -38,10 +38,10 @@
 | 0 | 成功 | 请求执行成功 |
 | 400 | 参数无效 | 请求参数格式错误或缺失必填字段 |
 | 500 | 服务器错误 | 服务端内部异常 |
-| 11002 | 账号不存在 | 用户账号未找到 |
-| 11007 | 账号无效 | 账号格式或状态无效 |
-| 11013 | 账号已存在 | 创建用户时账号重复 |
-| 11014 | 账号不能为空 | 创建用户时账号为空 |
+| 11002 | 用户不存在 | 用户未找到 |
+| 11007 | 标识无效 | 邮箱或手机号格式无效 |
+| 11013 | 标识已存在 | 创建用户时邮箱或手机号重复 |
+| 11014 | 标识不能为空 | 创建用户时邮箱和手机号均为空 |
 | 11016 | 角色不存在 | 角色 ID 不存在 |
 | 11017 | 角色名不能为空 | 创建角色时名称为空 |
 | 11018 | 角色名已存在 | 创建角色时名称重复 |
@@ -110,7 +110,8 @@
   | 名称 | 类型 | 必填 | 默认值 | 说明 |
   | ---- | ---- | ---- | ------ | ---- |
   | user_name | string | 否 | - | 用户名模糊查询 |
-  | account | string | 否 | - | 账号模糊查询 |
+  | email | string | 否 | - | 邮箱模糊查询 |
+  | phone | string | 否 | - | 手机号模糊查询 |
   | status | int8 | 否 | - | 用户状态：`0` 禁用、`1` 正常 |
   | page | int | 否 | 1 | 页码 |
   | page_size | int | 否 | 10 | 单页数量 |
@@ -127,7 +128,8 @@
   | ---- | ---- | ---- |
   | list | array | 用户列表 |
   | list[].id | uint | 用户 ID |
-  | list[].account | string | 账号 |
+  | list[].email | string | 邮箱 |
+  | list[].phone | string | 手机号 |
   | list[].user_name | string | 用户名 |
   | list[].feishu_id | string | 飞书 ID |
   | list[].wechat_id | string | 微信 ID |
@@ -146,7 +148,8 @@
       "list": [
         {
           "id": 1,
-          "account": "admin",
+          "email": "admin@example.com",
+          "phone": "+8613800000000",
           "user_name": "管理员",
           "feishu_id": "",
           "wechat_id": "",
@@ -185,7 +188,8 @@
   ```json
   {
     "user_name": "张三",
-    "account": "zhangsan",
+    "email": "zhangsan@example.com",
+    "phone": "+8613800000001",
     "password": "e10adc3949ba59abbe56e057f20f883e",
     "status": 1,
     "avatar": "https://cdn.example/avatar.png",
@@ -198,7 +202,8 @@
   | 字段 | 类型 | 必填 | 说明 |
   | ---- | ---- | ---- | ---- |
   | user_name | string | 否 | 用户名 |
-  | account | string | 是 | 登录账号 |
+  | email | string | 否 | 登录邮箱（与 phone 二选一或同时提供） |
+  | phone | string | 否 | 登录手机号（与 email 二选一或同时提供） |
   | password | string | 否 | 密码摘要，建议传 `md5(明文密码)`（空值时将使用默认初始密码逻辑） |
   | status | int8 | 否 | 状态，默认 1 |
   | avatar | string | 否 | 头像 URL |
@@ -218,7 +223,8 @@
   {
     "id": 1,
     "user_name": "张三（更新）",
-    "account": "zhangsan",
+    "email": "zhangsan@example.com",
+    "phone": "+8613800000001",
     "password": "",
     "status": 1,
     "avatar": "https://cdn.example/avatar_new.png",
@@ -232,7 +238,8 @@
   | ---- | ---- | ---- | ---- |
   | id | uint | 是 | 用户 ID |
   | user_name | string | 否 | 用户名 |
-  | account | string | 否 | 登录账号 |
+  | email | string | 否 | 登录邮箱 |
+  | phone | string | 否 | 登录手机号 |
   | password | string | 否 | 密码摘要，建议传 `md5(明文密码)`（空则不更新） |
   | status | int8 | 否 | 状态 |
   | avatar | string | 否 | 头像 URL |
@@ -385,6 +392,7 @@
 | 更新角色 | PUT | `/go-api/internal/admin/system/role` |
 | 删除角色 | DELETE | `/go-api/internal/admin/system/role` |
 | 获取角色权限 | GET | `/go-api/internal/admin/system/role/permission` |
+| 获取角色菜单权限树 | GET | `/go-api/internal/admin/system/role/permission/menu-tree` |
 | 更新角色权限 | PUT | `/go-api/internal/admin/system/role/permission` |
 
 ---
@@ -535,6 +543,71 @@
 
 - **成功返回**：`code=0`
 - **错误码**：`400`、`500`、`11016`、`11038`
+
+---
+
+### 9. 获取角色菜单权限树
+- **Method**：GET
+- **Path**：`/go-api/internal/admin/system/role/permission/menu-tree`
+- **Query 参数**：
+
+  | 名称 | 类型 | 必填 | 说明 |
+  | ---- | ---- | ---- | ---- |
+  | role_id | uint | 是 | 角色 ID |
+
+- **说明**：返回菜单树结构，并在每个节点附带 `checked`，表示该菜单对应 `permission_id` 是否已授权给当前角色。
+
+- **响应结构**：
+
+  | 字段 | 类型 | 说明 |
+  | ---- | ---- | ---- |
+  | data.items | []object | 菜单权限树 |
+  | data.items[].id | uint | 菜单 ID |
+  | data.items[].name | string | 菜单名称 |
+  | data.items[].path | string | 菜单路径 |
+  | data.items[].permission_id | uint | 菜单关联权限 ID |
+  | data.items[].parent_id | uint | 父菜单 ID |
+  | data.items[].icon | string | 菜单图标 |
+  | data.items[].sort | int | 排序 |
+  | data.items[].checked | bool | 当前角色是否拥有该菜单权限 |
+  | data.items[].children | []object | 子菜单 |
+
+- **响应示例**：
+  ```json
+  {
+    "code": 0,
+    "msg": "OK",
+    "data": {
+      "items": [
+        {
+          "id": 1,
+          "name": "系统管理",
+          "path": "/system",
+          "permission_id": 0,
+          "parent_id": 0,
+          "icon": "setting",
+          "sort": 1,
+          "checked": false,
+          "children": [
+            {
+              "id": 2,
+              "name": "用户管理",
+              "path": "/system/user",
+              "permission_id": 101,
+              "parent_id": 1,
+              "icon": "user",
+              "sort": 1,
+              "checked": true,
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+  ```
+
+- **错误码**：`400`、`500`、`11016`
 
 ---
 
@@ -877,25 +950,24 @@
 | 功能 | 方法 | 路径 |
 | ---- | ---- | ---- |
 | 分页查询操作记录 | GET | `/go-api/internal/admin/system/record/paginate` |
-| 操作记录交互详情 | GET | `/go-api/internal/admin/system/record/interaction` |
+| 操作记录详情 | GET | `/go-api/internal/admin/system/record/detail` |
 
 ---
 
 ### 1. 分页查询操作记录
 - **Method**：GET
 - **Path**：`/go-api/internal/admin/system/record/paginate`
-- **说明**：查询系统操作日志记录（存储于 `sys_operation_record`，GORM 模型）
+- **说明**：查询系统操作日志记录（存储于 `sys_operation_record`，用户名通过 `user_id` 关联 `sys_user.user_name`）
 - **Query 参数**：
 
   | 名称 | 类型 | 必填 | 默认值 | 说明 |
   | ---- | ---- | ---- | ------ | ---- |
-  | id | string | 否 | - | 记录 ID（数字字符串） |
   | path | string | 否 | - | 请求路径过滤 |
   | user_id | uint | 否 | - | 用户 ID 过滤 |
-  | user_name | string | 否 | - | 用户名过滤 |
   | ip | string | 否 | - | IP 地址过滤 |
-  | status | int | 否 | - | HTTP 状态码过滤 |
+  | status | int | 否 | - | 业务状态码过滤（响应 JSON 中 `code`） |
   | method | string | 否 | - | HTTP 方法过滤 |
+  | trace_id | string | 否 | - | 链路追踪 ID 过滤 |
   | page | int | 否 | 1 | 页码 |
   | size | int | 否 | 10 | 单页数量 |
 
@@ -905,19 +977,13 @@
   | ---- | ---- | ---- |
   | items | array | 记录列表 |
   | items[].ID | uint | 记录 ID |
+  | items[].Method | string | HTTP 方法 |
+  | items[].Path | string | 请求路径 |
+  | items[].IP | string | 请求 IP |
+  | items[].Status | int | 业务状态码（响应 JSON 中 `code`） |
+  | items[].UserName | string | 用户名 |
+  | items[].TraceID | string | 链路追踪 ID |
   | items[].CreatedAt | string | 创建时间 |
-  | items[].UpdatedAt | string | 更新时间 |
-  | items[].DeletedAt | object/null | 软删除时间 |
-  | items[].ip | string | 请求 IP |
-  | items[].method | string | HTTP 方法 |
-  | items[].path | string | 请求路径 |
-  | items[].status | int | HTTP 状态码 |
-  | items[].latency | float64 | 请求耗时（毫秒） |
-  | items[].agent | string | User-Agent |
-  | items[].error_message | string | 错误信息 |
-  | items[].user_id | uint | 用户 ID |
-  | items[].user_name | string | 用户名 |
-  | items[].trace_id | string | 链路追踪 ID |
   | total | int64 | 记录总数 |
 
 - **响应示例**：
@@ -929,19 +995,13 @@
       "items": [
         {
           "ID": 1024,
-          "CreatedAt": "2024-10-12T13:00:00+08:00",
-          "UpdatedAt": "2024-10-12T13:00:01+08:00",
-          "DeletedAt": null,
-          "ip": "192.168.1.100",
-          "method": "POST",
-          "path": "/go-api/internal/admin/system/user",
-          "status": 200,
-          "latency": 45.5,
-          "agent": "Mozilla/5.0",
-          "error_message": "",
-          "user_id": 1,
-          "user_name": "admin",
-          "trace_id": "abc123def456"
+          "Method": "POST",
+          "Path": "/go-api/internal/admin/system/user",
+          "IP": "192.168.1.100",
+          "Status": 0,
+          "UserName": "admin",
+          "TraceID": "abc123def456",
+          "CreatedAt": "2024-10-12T13:00:00+08:00"
         }
       ],
       "total": 1000
@@ -951,10 +1011,10 @@
 
 ---
 
-### 2. 操作记录交互详情
+### 2. 操作记录详情
 - **Method**：GET
-- **Path**：`/go-api/internal/admin/system/record/interaction`
-- **说明**：获取指定操作记录的请求参数和响应详情
+- **Path**：`/go-api/internal/admin/system/record/detail`
+- **说明**：根据操作记录 ID 获取完整日志详情
 - **Query 参数**：
 
   | 名称 | 类型 | 必填 | 说明 |
@@ -965,26 +1025,23 @@
 
   | 字段 | 类型 | 说明 |
   | ---- | ---- | ---- |
-  | params | object | 请求参数（优先解析 JSON，失败回退 querystring/raw） |
-  | resp | object | 响应内容（JSON 反序列化结果，失败回退原始字符串对象） |
-
-- **响应示例**：
-  ```json
-  {
-    "code": 0,
-    "msg": "OK",
-    "data": {
-      "params": {
-        "user_name": "test",
-        "account": "test"
-      },
-      "resp": {
-        "code": 0,
-        "msg": "OK",
-        "data": null
-      }
-    }
-  }
-  ```
+  | id | uint | 记录 ID |
+  | method | string | HTTP 方法 |
+  | path | string | 请求路径 |
+  | ip | string | 请求 IP |
+  | status | int | 业务状态码（响应 JSON 中 `code`） |
+  | user_id | uint | 用户 ID |
+  | user_name | string | 用户名（来自 `sys_user`） |
+  | trace_id | string | 链路追踪 ID |
+  | created_at | string | 创建时间 |
+  | latency | float64 | 请求耗时（秒） |
+  | agent | string | User-Agent |
+  | error_message | string | 错误信息 |
+  | params | object | 格式化请求参数（JSON 优先，失败回退 query/raw） |
+  | resp | object | 格式化响应内容（JSON 优先，失败回退 raw） |
 
 - **错误码**：`400`、`500`
+
+---
+
+> **说明**：详情接口中的 `params` 与 `resp` 已按服务端解析规则格式化返回（JSON 优先，失败时回退 query/raw 结构）。
