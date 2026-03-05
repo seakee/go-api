@@ -1,5 +1,5 @@
-# Use Go 1.24 as the base image for the build stage
-FROM golang:1.24-alpine as builder
+# Use a pinned Go patch version to match go.mod (go 1.24.13)
+FROM golang:1.24.13-alpine as builder
 
 # Set maintainer information
 LABEL maintainer="Seakee <seakee23@gmail.com>"
@@ -20,8 +20,8 @@ COPY . .
 # Build the project in the /build directory
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /build/go-api ./main.go
 
-# Use a smaller base image for the runtime stage
-FROM alpine:latest
+# Use a pinned Alpine major/minor version to avoid drifting with :latest
+FROM alpine:3.21
 RUN apk --no-cache add ca-certificates
 
 # Set the working directory for runtime
