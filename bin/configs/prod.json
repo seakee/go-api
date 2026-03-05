@@ -6,7 +6,7 @@
     "read_timeout": 60,
     "write_timeout": 60,
     "version": "1.0.0",
-    "debug_mode": true,
+    "debug_mode": false,
     "default_lang": "zh-CN",
     "jwt_secret": "",
     "token_expire": 604800,
