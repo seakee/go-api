@@ -126,17 +126,18 @@ func (h handler) UpdateIdentifier() gin.HandlerFunc {
 func (h handler) BindOAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			SafeCode   string `json:"safe_code" binding:"required"`
-			Identifier string `json:"identifier" binding:"required"`
-			Password   string `json:"password"`
-			TotpCode   string `json:"totp_code"`
+			SafeCode   string   `json:"safe_code" binding:"required"`
+			Identifier string   `json:"identifier" binding:"required"`
+			Password   string   `json:"password"`
+			TotpCode   string   `json:"totp_code"`
+			SyncFields []string `json:"sync_fields"`
 		}
 
 		var err error
 		errCode := e.InvalidParams
 
 		if err = c.ShouldBind(&req); err == nil {
-			errCode, err = h.service.BindOAuth(h.Context(c), req.SafeCode, req.Identifier, req.Password, req.TotpCode)
+			errCode, err = h.service.BindOAuth(h.Context(c), req.SafeCode, req.Identifier, req.Password, req.TotpCode, req.SyncFields)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)
@@ -270,7 +271,11 @@ func (h handler) Token() gin.HandlerFunc {
 		if err = c.ShouldBindJSON(&params); err == nil {
 			token, errCode, err = h.service.Token(h.Context(c), &params)
 			if errCode == e.NeedBindOAuth {
-				h.I18n.JSON(c, errCode, gin.H{"safe_code": token.SafeCode}, err)
+				h.I18n.JSON(c, errCode, gin.H{
+					"safe_code":       token.SafeCode,
+					"oauth_profile":   token.OAuthProfile,
+					"syncable_fields": token.SyncableFields,
+				}, err)
 				return
 			}
 		}

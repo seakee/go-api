@@ -15,6 +15,7 @@ import (
 	"github.com/seakee/go-api/app/config"
 	"github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/pkg/e"
+	pwd "github.com/seakee/go-api/app/pkg/password"
 	"github.com/seakee/go-api/app/pkg/totp"
 	repo "github.com/seakee/go-api/app/repository/system"
 	"github.com/sk-pkg/logger"
@@ -35,13 +36,16 @@ const (
 
 	wechatAccessTokenAPI = "https://qyapi.weixin.qq.com/cgi-bin/gettoken"
 	wechatUserInfoAPI    = "https://qyapi.weixin.qq.com/cgi-bin/auth/getuserinfo"
+	wechatUserDetailAPI  = "https://qyapi.weixin.qq.com/cgi-bin/user/get"
 )
 
 // AccessToken defines the structure of an access token.
 type AccessToken struct {
-	SafeCode string `json:"safe_code"`  // Safe code for secondary verification
-	Token    string `json:"token"`      // JWT token
-	ExpireIn int64  `json:"expires_in"` // Token expiration time in seconds
+	SafeCode       string        `json:"safe_code"`                 // Safe code for secondary verification
+	Token          string        `json:"token"`                     // JWT token
+	ExpireIn       int64         `json:"expires_in"`                // Token expiration time in seconds
+	OAuthProfile   *OAuthProfile `json:"oauth_profile,omitempty"`   // OAuth profile preview for bind confirmation
+	SyncableFields []string      `json:"syncable_fields,omitempty"` // Allowed fields that can be synced during bind
 }
 
 // AuthParam defines the structure of authentication parameters.
@@ -52,12 +56,19 @@ type AuthParam struct {
 	Credentials string `json:"credentials" binding:"required"` // Credentials (such as password, verification code, etc.)
 }
 
+// OAuthProfile defines the syncable profile preview returned by third-party OAuth providers.
+type OAuthProfile struct {
+	UserName string `json:"user_name,omitempty"`
+	Avatar   string `json:"avatar,omitempty"`
+}
+
 // safeCode defines the structure of a safe code.
 type safeCode struct {
-	UserID    uint   `json:"user_id,omitempty"` // User ID
-	Action    string `json:"action"`            // Action type (e.g., "tfa" for two-factor authentication, "reset_password" for password reset)
-	OauthType string `json:"oauth_type,omitempty"`
-	OauthID   string `json:"oauth_id,omitempty"`
+	UserID       uint          `json:"user_id,omitempty"` // User ID
+	Action       string        `json:"action"`            // Action type (e.g., "tfa" for two-factor authentication, "reset_password" for password reset)
+	OauthType    string        `json:"oauth_type,omitempty"`
+	OauthID      string        `json:"oauth_id,omitempty"`
+	OAuthProfile *OAuthProfile `json:"oauth_profile,omitempty"`
 }
 
 // claims defines the structure of JWT claims.
@@ -79,7 +90,7 @@ type AuthService interface {
 	ResetPassword(ctx context.Context, sCode string, password string) (errCode int, err error)
 	UpdatePassword(ctx context.Context, userID uint, totpCode, oldPassword, password string) (errCode int, err error)
 	UpdateIdentifier(ctx context.Context, userID uint, totpCode, password, email, phone string) (errCode int, err error)
-	BindOAuth(ctx context.Context, sCode, identifier, password, totpCode string) (errCode int, err error)
+	BindOAuth(ctx context.Context, sCode, identifier, password, totpCode string, syncFields []string) (errCode int, err error)
 	EnableTfa(ctx context.Context, userID uint, totpCode string, totpKey string) (errCode int, err error)
 	DisableTfa(ctx context.Context, userID uint, totpCode string) (errCode int, err error)
 	TotpKey(ctx context.Context, userID uint) (key, qrCode string, errCode int, err error)
@@ -384,7 +395,13 @@ func (a authService) UpdateIdentifier(ctx context.Context, userID uint, totpCode
 		}
 
 		// Verify password
-		if util.MD5(password+user.Salt) != user.Password {
+		matched, verifyErr := pwd.VerifyCredential(user.Password, password)
+		if verifyErr != nil {
+			errCode = e.ERROR
+			err = verifyErr
+			return
+		}
+		if !matched {
 			errCode = e.IdentifierOrPasswordFail
 			return
 		}
@@ -473,7 +490,13 @@ func (a authService) UpdatePassword(ctx context.Context, userID uint, totpCode, 
 		}
 
 		// Verify old password
-		if util.MD5(oldPassword+user.Salt) != user.Password {
+		matched, verifyErr := pwd.VerifyCredential(user.Password, oldPassword)
+		if verifyErr != nil {
+			errCode = e.ERROR
+			err = verifyErr
+			return
+		}
+		if !matched {
 			errCode = e.IdentifierOrPasswordFail
 			return
 		}
@@ -703,11 +726,75 @@ func (a authService) Token(ctx context.Context, param *AuthParam) (token AccessT
 	case errCode == e.NeedBindOAuth:
 		if user != nil {
 			token.SafeCode = user.TotpKey
+			token.OAuthProfile = oauthProfileFromUser(user)
+			token.SyncableFields = syncableFieldsForProfile(token.OAuthProfile)
 		}
 		return
 	}
 
 	return
+}
+
+func oauthLoginStatusErrCode(user *system.User) int {
+	if user != nil && user.Status != 1 {
+		return e.UserNotFound
+	}
+
+	return e.SUCCESS
+}
+
+func oauthProfileFromUser(user *system.User) *OAuthProfile {
+	if user == nil {
+		return nil
+	}
+
+	profile := &OAuthProfile{
+		UserName: strings.TrimSpace(user.UserName),
+		Avatar:   strings.TrimSpace(user.Avatar),
+	}
+
+	if profile.UserName == "" && profile.Avatar == "" {
+		return nil
+	}
+
+	return profile
+}
+
+func syncableFieldsForProfile(profile *OAuthProfile) []string {
+	if profile == nil {
+		return nil
+	}
+
+	fields := make([]string, 0, 2)
+	if strings.TrimSpace(profile.UserName) != "" {
+		fields = append(fields, "user_name")
+	}
+	if strings.TrimSpace(profile.Avatar) != "" {
+		fields = append(fields, "avatar")
+	}
+
+	return fields
+}
+
+func applyOAuthProfileSync(updateUser *system.User, profile *OAuthProfile, syncFields []string) error {
+	if len(syncFields) == 0 || profile == nil {
+		return nil
+	}
+
+	for _, field := range syncFields {
+		switch strings.TrimSpace(field) {
+		case "user_name":
+			updateUser.UserName = strings.TrimSpace(profile.UserName)
+		case "avatar":
+			updateUser.Avatar = strings.TrimSpace(profile.Avatar)
+		case "":
+			continue
+		default:
+			return fmt.Errorf("unsupported oauth sync field: %s", field)
+		}
+	}
+
+	return nil
 }
 
 // verifyByFeishu verifies user identity using Feishu authorization code.
@@ -739,28 +826,39 @@ func (a authService) verifyByFeishu(ctx context.Context, code, state string) (us
 		return
 	}
 
-	userID, err := a.getFeishuUserID(ctx, accessToken)
+	unionID, profile, err := a.getFeishuUserProfile(ctx, accessToken)
 	if err != nil {
 		errCode = e.ERROR
 		return
 	}
 
-	user, err = a.userRepo.Detail(ctx, &system.User{FeishuId: userID})
+	unionID = strings.TrimSpace(unionID)
+	if unionID == "" {
+		errCode = e.ERROR
+		err = errors.New("empty feishu union id")
+		return
+	}
+
+	user, err = a.userRepo.GetOAuthUser(ctx, "feishu", unionID)
 	if err != nil {
 		errCode = e.ERROR
+		return
+	}
+
+	if errCode = oauthLoginStatusErrCode(user); errCode != e.SUCCESS {
 		return
 	}
 
 	if user == nil {
 		var sc string
-		sc, err = a.generateSafeCode(ctx, safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: userID})
+		sc, err = a.generateSafeCode(ctx, safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: unionID, OAuthProfile: profile})
 		if err != nil {
 			errCode = e.ERROR
 			return
 		}
 
 		errCode = e.NeedBindOAuth
-		return &system.User{TotpKey: sc}, errCode, nil
+		return &system.User{TotpKey: sc, UserName: profileUserName(profile), Avatar: profileAvatar(profile)}, errCode, nil
 	}
 
 	return
@@ -813,21 +911,24 @@ func (a authService) getFeishuUserAccessToken(ctx context.Context, code string) 
 	return result.Data.AccessToken, nil
 }
 
-// getFeishuUserID retrieves Feishu user ID.
+// getFeishuUserProfile retrieves Feishu union_id and syncable profile fields from the user info API.
 //
 // Parameters:
 //   - ctx: Context
 //   - token: Feishu user access token
 //
 // Returns:
-//   - userID: Feishu user ID
+//   - unionID: Feishu union_id
+//   - profile: Syncable OAuth profile preview
 //   - err: Error message
-func (a authService) getFeishuUserID(ctx context.Context, token string) (userID string, err error) {
+func (a authService) getFeishuUserProfile(ctx context.Context, token string) (unionID string, profile *OAuthProfile, err error) {
 	type userInfoResult struct {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
-			UserId string `json:"user_id"`
+			UnionID   string `json:"union_id"`
+			Name      string `json:"name"`
+			AvatarURL string `json:"avatar_url"`
 		} `json:"data"`
 	}
 	resp, err := a.request.R().SetContext(ctx).
@@ -848,7 +949,16 @@ func (a authService) getFeishuUserID(ctx context.Context, token string) (userID 
 		return
 	}
 
-	return result.Data.UserId, nil
+	profile = &OAuthProfile{
+		UserName: strings.TrimSpace(result.Data.Name),
+		Avatar:   strings.TrimSpace(result.Data.AvatarURL),
+	}
+
+	if profile.UserName == "" && profile.Avatar == "" {
+		profile = nil
+	}
+
+	return result.Data.UnionID, profile, nil
 }
 
 // verifyByWechat verifies user identity using WeChat Work authorization code.
@@ -880,28 +990,46 @@ func (a authService) verifyByWechat(ctx context.Context, code, state string) (us
 		return
 	}
 
-	userID, err := a.getWechatUserID(ctx, accessToken, code)
+	wechatUserID, err := a.getWechatUserID(ctx, accessToken, code)
 	if err != nil {
 		errCode = e.ERROR
 		return
 	}
 
-	user, err = a.userRepo.Detail(ctx, &system.User{WechatId: userID})
+	wechatUserID = strings.TrimSpace(wechatUserID)
+	if wechatUserID == "" {
+		errCode = e.ERROR
+		err = errors.New("empty wechat userid")
+		return
+	}
+
+	user, err = a.userRepo.GetOAuthUser(ctx, "wechat", wechatUserID)
 	if err != nil {
 		errCode = e.ERROR
+		return
+	}
+
+	if errCode = oauthLoginStatusErrCode(user); errCode != e.SUCCESS {
 		return
 	}
 
 	if user == nil {
+		profile, profileErr := a.getWechatUserProfile(ctx, accessToken, wechatUserID)
+		if profileErr != nil && a.logger != nil {
+			a.logger.Error(ctx, "failed to fetch wechat profile for oauth bind preview",
+				zap.String("wechat_userid", wechatUserID),
+				zap.Error(profileErr))
+		}
+
 		var sc string
-		sc, err = a.generateSafeCode(ctx, safeCode{Action: "oauth_bind", OauthType: "wechat", OauthID: userID})
+		sc, err = a.generateSafeCode(ctx, safeCode{Action: "oauth_bind", OauthType: "wechat", OauthID: wechatUserID, OAuthProfile: profile})
 		if err != nil {
 			errCode = e.ERROR
 			return
 		}
 
 		errCode = e.NeedBindOAuth
-		return &system.User{TotpKey: sc}, errCode, nil
+		return &system.User{TotpKey: sc, UserName: profileUserName(profile), Avatar: profileAvatar(profile)}, errCode, nil
 	}
 
 	return
@@ -965,7 +1093,7 @@ func (a authService) getWechatAccessToken(ctx context.Context) (token string, er
 	return result.AccessToken, nil
 }
 
-// getWechatUserID retrieves WeChat Work user ID.
+// getWechatUserID retrieves WeChat Work userid from the OAuth user info API.
 //
 // Parameters:
 //   - ctx: Context
@@ -973,14 +1101,13 @@ func (a authService) getWechatAccessToken(ctx context.Context) (token string, er
 //   - code: Authorization code
 //
 // Returns:
-//   - userID: WeChat Work user ID
+//   - userID: WeChat Work userid
 //   - err: Error message
 func (a authService) getWechatUserID(ctx context.Context, accessToken, code string) (userID string, err error) {
 	type userInfoResult struct {
 		ErrCode int    `json:"errcode"`
 		ErrMsg  string `json:"errmsg"`
 		UserID  string `json:"userid"`
-		OpenID  string `json:"openid"`
 	}
 
 	userURL := fmt.Sprintf("%s?access_token=%s&code=%s", wechatUserInfoAPI,
@@ -1007,12 +1134,69 @@ func (a authService) getWechatUserID(ctx context.Context, accessToken, code stri
 		return
 	}
 
-	// Prefer UserID, use OpenID if not available
-	if result.UserID != "" {
-		return result.UserID, nil
+	userID = strings.TrimSpace(result.UserID)
+	if userID == "" {
+		err = errors.New("wechat userid not found in oauth response")
+		return
 	}
 
-	return result.OpenID, nil
+	return userID, nil
+}
+
+func (a authService) getWechatUserProfile(ctx context.Context, accessToken, userID string) (profile *OAuthProfile, err error) {
+	type userDetailResult struct {
+		ErrCode int    `json:"errcode"`
+		ErrMsg  string `json:"errmsg"`
+		Name    string `json:"name"`
+		Avatar  string `json:"avatar"`
+	}
+
+	userURL := fmt.Sprintf("%s?access_token=%s&userid=%s", wechatUserDetailAPI, accessToken, url.QueryEscape(userID))
+
+	request := a.request
+	if a.config.Oauth.Wechat.ProxyURL != "" {
+		request = request.SetProxy(a.config.Oauth.Wechat.ProxyURL)
+	}
+
+	resp, err := request.R().SetContext(ctx).Get(userURL)
+	if err != nil {
+		return nil, err
+	}
+
+	var result userDetailResult
+	err = json.Unmarshal(resp.Body(), &result)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.ErrCode != 0 {
+		return nil, fmt.Errorf("wechat work get user detail error: %s", result.ErrMsg)
+	}
+
+	profile = &OAuthProfile{
+		UserName: strings.TrimSpace(result.Name),
+		Avatar:   strings.TrimSpace(result.Avatar),
+	}
+
+	if profile.UserName == "" && profile.Avatar == "" {
+		return nil, nil
+	}
+
+	return profile, nil
+}
+
+func profileUserName(profile *OAuthProfile) string {
+	if profile == nil {
+		return ""
+	}
+	return profile.UserName
+}
+
+func profileAvatar(profile *OAuthProfile) string {
+	if profile == nil {
+		return ""
+	}
+	return profile.Avatar
 }
 
 // verifyByPassword verifies user by password.
@@ -1059,16 +1243,22 @@ func (a authService) verifyByPassword(ctx context.Context, identifier, password 
 		return
 	}
 
-	// Verify password
-	md5Password := util.MD5(password + user.Salt)
+	// Verify password.
+	matched, verifyErr := pwd.VerifyCredential(user.Password, password)
+	if verifyErr != nil {
+		errCode = e.ERROR
+		err = verifyErr
+		return
+	}
 
-	if user.Password != md5Password {
+	if !matched {
 		errCode = e.IdentifierOrPasswordFail
 		return
 	}
 
-	// Check if it's the initial password
-	if md5Password == util.MD5(util.MD5(DefaultPassword)+user.Salt) {
+	// 检查用户是否仍在使用默认密码摘要登录。
+	// 输入 password 是前端传入的 md5(明文密码)，与 util.MD5(DefaultPassword) 直接比较即可。
+	if password == util.MD5(DefaultPassword) {
 		errCode = e.NeedResetPWD
 		return
 	}
@@ -1192,7 +1382,7 @@ func (a authService) VerifyToken(tokenString string) (userName string, userID ui
 	return "", 0, errors.New("invalid token")
 }
 
-func (a authService) BindOAuth(ctx context.Context, sCode, identifier, password, totpCode string) (errCode int, err error) {
+func (a authService) BindOAuth(ctx context.Context, sCode, identifier, password, totpCode string, syncFields []string) (errCode int, err error) {
 	if sCode == "" {
 		return e.SafeCodeCanNotBeNull, nil
 	}
@@ -1239,13 +1429,22 @@ func (a authService) BindOAuth(ctx context.Context, sCode, identifier, password,
 			return e.IdentifierOrPasswordCanNotBeNull, nil
 		}
 
-		if util.MD5(password+user.Salt) != user.Password {
+		matched, verifyErr := pwd.VerifyCredential(user.Password, password)
+		if verifyErr != nil {
+			return e.ERROR, verifyErr
+		}
+		if !matched {
 			return e.IdentifierOrPasswordFail, nil
 		}
 	}
 
+	oauthID := strings.TrimSpace(sc.OauthID)
+	if oauthID == "" {
+		return e.ERROR, errors.New("empty oauth id")
+	}
+
 	if sc.OauthType == "feishu" {
-		bindUser, bindErr := a.userRepo.Detail(ctx, &system.User{FeishuId: sc.OauthID})
+		bindUser, bindErr := a.userRepo.GetOAuthUser(ctx, "feishu", oauthID)
 		if bindErr != nil {
 			return e.ERROR, bindErr
 		}
@@ -1253,9 +1452,13 @@ func (a authService) BindOAuth(ctx context.Context, sCode, identifier, password,
 			return e.IdentifierConflict, nil
 		}
 
-		err = a.userRepo.Update(ctx, &system.User{Model: gorm.Model{ID: user.ID}, FeishuId: sc.OauthID})
+		updateUser := &system.User{Model: gorm.Model{ID: user.ID}, FeishuId: oauthID}
+		if err = applyOAuthProfileSync(updateUser, sc.OAuthProfile, syncFields); err != nil {
+			return e.InvalidParams, err
+		}
+		err = a.userRepo.Update(ctx, updateUser)
 	} else if sc.OauthType == "wechat" {
-		bindUser, bindErr := a.userRepo.Detail(ctx, &system.User{WechatId: sc.OauthID})
+		bindUser, bindErr := a.userRepo.GetOAuthUser(ctx, "wechat", oauthID)
 		if bindErr != nil {
 			return e.ERROR, bindErr
 		}
@@ -1263,7 +1466,11 @@ func (a authService) BindOAuth(ctx context.Context, sCode, identifier, password,
 			return e.IdentifierConflict, nil
 		}
 
-		err = a.userRepo.Update(ctx, &system.User{Model: gorm.Model{ID: user.ID}, WechatId: sc.OauthID})
+		updateUser := &system.User{Model: gorm.Model{ID: user.ID}, WechatId: oauthID}
+		if err = applyOAuthProfileSync(updateUser, sc.OAuthProfile, syncFields); err != nil {
+			return e.InvalidParams, err
+		}
+		err = a.userRepo.Update(ctx, updateUser)
 	} else {
 		return e.InvalidOauthState, nil
 	}

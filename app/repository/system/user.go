@@ -7,9 +7,9 @@ import (
 
 	"github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/model/system/role"
+	pwd "github.com/seakee/go-api/app/pkg/password"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
-	"github.com/sk-pkg/util"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -70,9 +70,14 @@ func (u userRepo) Update(ctx context.Context, user *system.User) error {
 
 	data := make(map[string]interface{})
 	if user.Password != "" {
-		salt := util.RandUpStr(32)
-		data["salt"] = salt
-		data["password"] = util.MD5(user.Password + salt)
+		hashedPassword := user.Password
+		if !pwd.IsBcryptHash(user.Password) {
+			hashedPassword, err = pwd.HashCredential(user.Password)
+			if err != nil {
+				return err
+			}
+		}
+		data["password"] = hashedPassword
 	}
 
 	if user.TotpEnabled {
@@ -265,20 +270,21 @@ func (u userRepo) Detail(ctx context.Context, user *system.User) (*system.User, 
 }
 
 func (u userRepo) GetOAuthUser(ctx context.Context, oauthType, id string) (*system.User, error) {
-	user := &system.User{}
+	normalizedID := strings.TrimSpace(id)
+	if normalizedID == "" {
+		return nil, nil
+	}
 
 	switch oauthType {
 	case "github":
-		user.GithubId = id
+		return (&system.User{}).Where("github_id = ?", normalizedID).First(ctx, u.db)
 	case "feishu":
-		user.FeishuId = id
+		return (&system.User{}).Where("feishu_id = ?", normalizedID).First(ctx, u.db)
 	case "wechat":
-		user.WechatId = id
+		return (&system.User{}).Where("wechat_id = ?", normalizedID).First(ctx, u.db)
 	default:
 		return nil, fmt.Errorf("%s type not support", oauthType)
 	}
-
-	return user.First(ctx, u.db)
 }
 
 // NewUserRepo creates a new UserRepo instance.

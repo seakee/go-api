@@ -18,12 +18,11 @@ type User struct {
 
 	Email       string `gorm:"column:email" json:"email"`
 	Phone       string `gorm:"column:phone" json:"phone"`
-	Password    string `gorm:"column:password" json:"password"`
-	Salt        string `gorm:"column:salt" json:"salt"`
-	TotpKey     string `gorm:"column:totp_key" json:"totp_key"`
+	Password    string `gorm:"column:password" json:"-"`
+	TotpKey     string `gorm:"column:totp_key" json:"-"`
 	TotpEnabled bool   `gorm:"column:totp_enabled" json:"totp_enabled"`
-	FeishuId    string `gorm:"column:feishu_id" json:"feishu_id"`
-	WechatId    string `gorm:"column:wechat_id" json:"wechat_id"`
+	FeishuId    string `gorm:"column:feishu_id" json:"feishu_id"` // stores Feishu union_id for admin OAuth binding
+	WechatId    string `gorm:"column:wechat_id" json:"wechat_id"` // stores WeCom userid for admin OAuth binding
 	GithubId    string `gorm:"column:github_id" json:"github_id"`
 	UserName    string `gorm:"column:user_name" json:"user_name"`
 	Status      int8   `gorm:"column:status" json:"status"`

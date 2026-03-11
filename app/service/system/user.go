@@ -5,10 +5,10 @@ import (
 	"errors"
 	"github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/pkg/e"
+	pwd "github.com/seakee/go-api/app/pkg/password"
 	repo "github.com/seakee/go-api/app/repository/system"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
-	"github.com/sk-pkg/util"
 	"gorm.io/gorm"
 )
 
@@ -149,12 +149,14 @@ func (s userService) Create(ctx context.Context, user *system.User) (errCode int
 	errCode = e.ERROR
 
 	user.Status = 1
-	user.Salt = util.RandUpStr(32)
-	if user.Password == "" || user.Password == "d41d8cd98f00b204e9800998ecf8427e" {
-		user.Password = util.MD5(DefaultPassword)
+	if user.Password == "" {
+		return e.PasswordCanNotBeNull, nil
 	}
 
-	user.Password = util.MD5(user.Password + user.Salt)
+	user.Password, err = pwd.HashCredential(user.Password)
+	if err != nil {
+		return e.ERROR, err
+	}
 
 	if !isAvailableName(user.UserName) {
 		errCode = e.InvalidUserName

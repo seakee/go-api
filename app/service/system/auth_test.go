@@ -3,16 +3,28 @@ package system
 import (
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	"gorm.io/gorm"
 
 	"github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/pkg/e"
+	pwd "github.com/seakee/go-api/app/pkg/password"
 	"github.com/seakee/go-api/app/pkg/totp"
 	"github.com/sk-pkg/util"
 )
+
+type roundTripFunc func(req *http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 // TestAuthService_Profile tests fetching user profile.
 func TestAuthService_Profile(t *testing.T) {
@@ -145,6 +157,189 @@ func TestAuthService_Profile(t *testing.T) {
 						t.Errorf("Profile() role_name = %v, want %v", got, tt.wantRoleName)
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestAuthService_getFeishuUserProfile(t *testing.T) {
+	tests := []struct {
+		name        string
+		body        string
+		wantUnionID string
+		wantProfile *OAuthProfile
+		wantErr     bool
+	}{
+		{
+			name:        "parse union_id from user info response",
+			body:        `{"code":0,"msg":"success","data":{"union_id":"on-d89jhsdhjsajkda7828enjdj328ydhhw3u43yjhdj","user_id":"5d9bdxxx","name":"zhangsan","avatar_url":"https://example.com/avatar.png"}}`,
+			wantUnionID: "on-d89jhsdhjsajkda7828enjdj328ydhhw3u43yjhdj",
+			wantProfile: &OAuthProfile{UserName: "zhangsan", Avatar: "https://example.com/avatar.png"},
+		},
+		{
+			name:    "provider error returns error",
+			body:    `{"code":999,"msg":"forbidden"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := resty.New()
+			client.SetTransport(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() != feishuUserInfoAPI {
+					t.Fatalf("request URL = %s, want %s", req.URL.String(), feishuUserInfoAPI)
+				}
+				if got := req.Header.Get("Authorization"); got != "Bearer test-token" {
+					t.Fatalf("Authorization = %s, want %s", got, "Bearer test-token")
+				}
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(tt.body)),
+				}, nil
+			}))
+
+			svc := &authService{request: client}
+			unionID, profile, err := svc.getFeishuUserProfile(context.Background(), "test-token")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("getFeishuUserProfile() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if unionID != tt.wantUnionID {
+				t.Fatalf("getFeishuUserProfile() unionID = %s, want %s", unionID, tt.wantUnionID)
+			}
+			if !reflect.DeepEqual(profile, tt.wantProfile) {
+				t.Fatalf("getFeishuUserProfile() profile = %+v, want %+v", profile, tt.wantProfile)
+			}
+		})
+	}
+}
+
+func TestAuthService_getWechatUserID(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantUserID string
+		wantErr    bool
+	}{
+		{
+			name:       "parse userid from oauth user info response",
+			body:       `{"errcode":0,"errmsg":"ok","userid":"zhangsan","openid":"openid-ignored"}`,
+			wantUserID: "zhangsan",
+		},
+		{
+			name:    "openid only response is rejected",
+			body:    `{"errcode":0,"errmsg":"ok","openid":"openid-only"}`,
+			wantErr: true,
+		},
+		{
+			name:    "provider error returns error",
+			body:    `{"errcode":40029,"errmsg":"invalid code"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := resty.New()
+			client.SetTransport(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() != wechatUserInfoAPI+"?access_token=test-access-token&code=test-code" {
+					t.Fatalf("request URL = %s", req.URL.String())
+				}
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(tt.body)),
+				}, nil
+			}))
+
+			svc := &authService{request: client}
+			userID, err := svc.getWechatUserID(context.Background(), "test-access-token", "test-code")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("getWechatUserID() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if userID != tt.wantUserID {
+				t.Fatalf("getWechatUserID() = %s, want %s", userID, tt.wantUserID)
+			}
+		})
+	}
+}
+
+func TestAuthService_getWechatUserProfile(t *testing.T) {
+	tests := []struct {
+		name        string
+		body        string
+		wantProfile *OAuthProfile
+		wantErr     bool
+	}{
+		{
+			name:        "parse wechat detail profile",
+			body:        `{"errcode":0,"errmsg":"ok","name":"lisi","avatar":"https://example.com/wechat-avatar.png"}`,
+			wantProfile: &OAuthProfile{UserName: "lisi", Avatar: "https://example.com/wechat-avatar.png"},
+		},
+		{
+			name:    "provider error returns error",
+			body:    `{"errcode":60111,"errmsg":"user not found"}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := resty.New()
+			client.SetTransport(roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if req.URL.String() != wechatUserDetailAPI+"?access_token=test-access-token&userid=wechat-userid" {
+					t.Fatalf("request URL = %s", req.URL.String())
+				}
+
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(tt.body)),
+				}, nil
+			}))
+
+			svc := &authService{request: client}
+			profile, err := svc.getWechatUserProfile(context.Background(), "test-access-token", "wechat-userid")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("getWechatUserProfile() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(profile, tt.wantProfile) {
+				t.Fatalf("getWechatUserProfile() profile = %+v, want %+v", profile, tt.wantProfile)
+			}
+		})
+	}
+}
+
+func TestOAuthLoginStatusErrCode(t *testing.T) {
+	tests := []struct {
+		name        string
+		user        *system.User
+		wantErrCode int
+	}{
+		{
+			name:        "nil user means unbound, not error",
+			user:        nil,
+			wantErrCode: e.SUCCESS,
+		},
+		{
+			name:        "active user can continue oauth login",
+			user:        &system.User{Model: gorm.Model{ID: 1}, Status: 1},
+			wantErrCode: e.SUCCESS,
+		},
+		{
+			name:        "disabled user is rejected in oauth login",
+			user:        &system.User{Model: gorm.Model{ID: 2}, Status: 2},
+			wantErrCode: e.UserNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := oauthLoginStatusErrCode(tt.user); got != tt.wantErrCode {
+				t.Fatalf("oauthLoginStatusErrCode() = %d, want %d", got, tt.wantErrCode)
 			}
 		})
 	}
@@ -449,6 +644,10 @@ func TestAuthService_UpdatePassword(t *testing.T) {
 	generator := totp.NewGenerator("go-api-admin")
 	totpKey := "JBSWY3DPEHPK3PXP"
 	validTotpCode := generator.GenerateTOTPCode(totpKey, time.Now())
+	oldPasswordHash, err := pwd.HashCredential("old-md5-password")
+	if err != nil {
+		t.Fatalf("HashCredential() error = %v", err)
+	}
 
 	tests := []struct {
 		name        string
@@ -467,8 +666,7 @@ func TestAuthService_UpdatePassword(t *testing.T) {
 			mockUser: &system.User{
 				Model:       gorm.Model{ID: 1},
 				TotpEnabled: false,
-				Salt:        "salt",
-				Password:    util.MD5("old-md5-password" + "salt"),
+				Password:    oldPasswordHash,
 			},
 			wantErrCode: 0,
 			wantErr:     false,
@@ -481,8 +679,7 @@ func TestAuthService_UpdatePassword(t *testing.T) {
 			mockUser: &system.User{
 				Model:       gorm.Model{ID: 1},
 				TotpEnabled: false,
-				Salt:        "salt",
-				Password:    util.MD5("old-md5-password" + "salt"),
+				Password:    oldPasswordHash,
 			},
 			wantErrCode: e.IdentifierOrPasswordFail,
 			wantErr:     false,
@@ -562,6 +759,10 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 	generator := totp.NewGenerator("go-api-admin")
 	totpKey := "JBSWY3DPEHPK3PXP"
 	validTotpCode := generator.GenerateTOTPCode(totpKey, time.Now())
+	currentPasswordHash, err := pwd.HashCredential("current-md5-password")
+	if err != nil {
+		t.Fatalf("HashCredential() error = %v", err)
+	}
 
 	tests := []struct {
 		name          string
@@ -583,8 +784,7 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 			mockUser: &system.User{
 				Model:       gorm.Model{ID: 1},
 				TotpEnabled: false,
-				Salt:        "salt",
-				Password:    util.MD5("current-md5-password" + "salt"),
+				Password:    currentPasswordHash,
 			},
 			wantErrCode: 0,
 			wantErr:     false,
@@ -597,8 +797,7 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 			mockUser: &system.User{
 				Model:       gorm.Model{ID: 1},
 				TotpEnabled: false,
-				Salt:        "salt",
-				Password:    util.MD5("current-md5-password" + "salt"),
+				Password:    currentPasswordHash,
 			},
 			wantErrCode: e.IdentifierOrPasswordFail,
 			wantErr:     false,
@@ -636,8 +835,7 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 			mockUser: &system.User{
 				Model:       gorm.Model{ID: 1},
 				TotpEnabled: false,
-				Salt:        "salt",
-				Password:    util.MD5("current-md5-password" + "salt"),
+				Password:    currentPasswordHash,
 			},
 			existingEmail: &system.User{Model: gorm.Model{ID: 2}, Email: "duplicated@example.com"},
 			wantErrCode:   e.IdentifierExists,
@@ -651,8 +849,7 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 			mockUser: &system.User{
 				Model:       gorm.Model{ID: 1},
 				TotpEnabled: false,
-				Salt:        "salt",
-				Password:    util.MD5("current-md5-password" + "salt"),
+				Password:    currentPasswordHash,
 			},
 			existingPhone: &system.User{Model: gorm.Model{ID: 2}, Phone: "+8613800000001"},
 			wantErrCode:   e.IdentifierExists,
@@ -667,8 +864,7 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 			mockUser: &system.User{
 				Model:       gorm.Model{ID: 1},
 				TotpEnabled: false,
-				Salt:        "salt",
-				Password:    util.MD5("current-md5-password" + "salt"),
+				Password:    currentPasswordHash,
 				Email:       "old@example.com",
 			},
 			wantErrCode: e.SUCCESS,
@@ -734,57 +930,185 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 	}
 }
 
+func TestAuthService_verifyByPassword_NoLegacyCompatibility(t *testing.T) {
+	defaultCredential := util.MD5(DefaultPassword)
+	legacySuffix := "legacy-marker"
+	legacyStored := util.MD5(defaultCredential + legacySuffix)
+
+	tests := []struct {
+		name        string
+		user        *system.User
+		password    string
+		wantErrCode int
+		wantUserNil bool
+	}{
+		{
+			name:        "legacy default password is rejected",
+			user:        &system.User{Model: gorm.Model{ID: 1}, Status: 1, Password: legacyStored},
+			password:    defaultCredential,
+			wantErrCode: e.IdentifierOrPasswordFail,
+			wantUserNil: false,
+		},
+		{
+			name:        "legacy non-default password is rejected",
+			user:        &system.User{Model: gorm.Model{ID: 2}, Status: 1, Password: util.MD5("other-md5-password" + legacySuffix)},
+			password:    "other-md5-password",
+			wantErrCode: e.IdentifierOrPasswordFail,
+			wantUserNil: false,
+		},
+		{
+			name: "bcrypt default password also requires reset",
+			user: func() *system.User {
+				hashed, err := pwd.HashCredential(defaultCredential)
+				if err != nil {
+					t.Fatalf("HashCredential() error = %v", err)
+				}
+				return &system.User{Model: gorm.Model{ID: 3}, Status: 1, Password: hashed}
+			}(),
+			password:    defaultCredential,
+			wantErrCode: e.NeedResetPWD,
+			wantUserNil: false,
+		},
+		{
+			name: "bcrypt non-default password login succeeds",
+			user: func() *system.User {
+				hashed, err := pwd.HashCredential("bcrypt-md5-password")
+				if err != nil {
+					t.Fatalf("HashCredential() error = %v", err)
+				}
+				return &system.User{Model: gorm.Model{ID: 4}, Status: 1, Password: hashed}
+			}(),
+			password:    "bcrypt-md5-password",
+			wantErrCode: e.SUCCESS,
+			wantUserNil: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updated := false
+			mockUserRepo := &mockUserRepo{
+				DetailByIdentifierFunc: func(ctx context.Context, identifier string) (*system.User, error) {
+					return tt.user, nil
+				},
+				UpdateFunc: func(ctx context.Context, user *system.User) error {
+					updated = true
+					return nil
+				},
+			}
+
+			svc := &authService{userRepo: mockUserRepo}
+			user, errCode, err := svc.verifyByPassword(context.Background(), "test@example.com", tt.password)
+			if err != nil {
+				t.Fatalf("verifyByPassword() error = %v", err)
+			}
+			if errCode != tt.wantErrCode {
+				t.Fatalf("verifyByPassword() errCode = %d, want %d", errCode, tt.wantErrCode)
+			}
+			if (user == nil) != tt.wantUserNil {
+				t.Fatalf("verifyByPassword() user nil = %v, want %v", user == nil, tt.wantUserNil)
+			}
+			if updated {
+				t.Fatalf("verifyByPassword() unexpected update call for non-legacy-upgrade flow")
+			}
+		})
+	}
+}
+
 func TestAuthService_BindOAuth(t *testing.T) {
 	generator := totp.NewGenerator("go-api-admin")
 	totpKey := "JBSWY3DPEHPK3PXP"
 	validTotpCode := generator.GenerateTOTPCode(totpKey, time.Now())
+	oauthPasswordHash, err := pwd.HashCredential("pwd")
+	if err != nil {
+		t.Fatalf("HashCredential() error = %v", err)
+	}
 
 	tests := []struct {
-		name        string
-		safeCode    *safeCode
-		identifier  string
-		password    string
-		totpCode    string
-		targetUser  *system.User
-		bindUser    *system.User
-		wantErrCode int
-		wantUpdated bool
+		name         string
+		safeCode     *safeCode
+		identifier   string
+		password     string
+		totpCode     string
+		syncFields   []string
+		targetUser   *system.User
+		bindUser     *system.User
+		wantErrCode  int
+		wantUpdated  bool
+		wantFeishuID string
+		wantWechatID string
+		wantUserName string
+		wantAvatar   string
 	}{
 		{
-			name:        "bind feishu with password",
-			safeCode:    &safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: "ou_xxx"},
-			identifier:  "test@example.com",
-			password:    "pwd",
-			targetUser:  &system.User{Model: gorm.Model{ID: 1}, Status: 1, Salt: "salt", Password: util.MD5("pwd" + "salt")},
-			wantErrCode: e.SUCCESS,
-			wantUpdated: true,
+			name:         "bind feishu with password",
+			safeCode:     &safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: "on_xxx"},
+			identifier:   "test@example.com",
+			password:     "pwd",
+			targetUser:   &system.User{Model: gorm.Model{ID: 1}, Status: 1, Password: oauthPasswordHash},
+			wantErrCode:  e.SUCCESS,
+			wantUpdated:  true,
+			wantFeishuID: "on_xxx",
 		},
 		{
-			name:        "bind wechat with totp",
-			safeCode:    &safeCode{Action: "oauth_bind", OauthType: "wechat", OauthID: "wx_xxx"},
-			identifier:  "+8613800000000",
-			totpCode:    validTotpCode,
-			targetUser:  &system.User{Model: gorm.Model{ID: 2}, Status: 1, TotpEnabled: true, TotpKey: totpKey},
-			wantErrCode: e.SUCCESS,
-			wantUpdated: true,
+			name:         "bind feishu and sync selected profile fields",
+			safeCode:     &safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: "on_sync", OAuthProfile: &OAuthProfile{UserName: "来自飞书", Avatar: "https://example.com/feishu.png"}},
+			identifier:   "test@example.com",
+			password:     "pwd",
+			syncFields:   []string{"user_name", "avatar"},
+			targetUser:   &system.User{Model: gorm.Model{ID: 1}, Status: 1, Password: oauthPasswordHash},
+			wantErrCode:  e.SUCCESS,
+			wantUpdated:  true,
+			wantFeishuID: "on_sync",
+			wantUserName: "来自飞书",
+			wantAvatar:   "https://example.com/feishu.png",
+		},
+		{
+			name:         "bind wechat with totp",
+			safeCode:     &safeCode{Action: "oauth_bind", OauthType: "wechat", OauthID: "wechat_user_xxx"},
+			identifier:   "+8613800000000",
+			totpCode:     validTotpCode,
+			targetUser:   &system.User{Model: gorm.Model{ID: 2}, Status: 1, TotpEnabled: true, TotpKey: totpKey},
+			wantErrCode:  e.SUCCESS,
+			wantUpdated:  true,
+			wantWechatID: "wechat_user_xxx",
 		},
 		{
 			name:        "oauth already bound by another user",
-			safeCode:    &safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: "ou_dup"},
+			safeCode:    &safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: "on_dup"},
 			identifier:  "test@example.com",
 			password:    "pwd",
-			targetUser:  &system.User{Model: gorm.Model{ID: 1}, Status: 1, Salt: "salt", Password: util.MD5("pwd" + "salt")},
-			bindUser:    &system.User{Model: gorm.Model{ID: 3}, FeishuId: "ou_dup"},
+			targetUser:  &system.User{Model: gorm.Model{ID: 1}, Status: 1, Password: oauthPasswordHash},
+			bindUser:    &system.User{Model: gorm.Model{ID: 3}, FeishuId: "on_dup"},
 			wantErrCode: e.IdentifierConflict,
 			wantUpdated: false,
 		},
 		{
 			name:        "disabled user can not bind oauth",
-			safeCode:    &safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: "ou_disabled"},
+			safeCode:    &safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: "on_disabled"},
 			identifier:  "disabled@example.com",
 			password:    "pwd",
-			targetUser:  &system.User{Model: gorm.Model{ID: 4}, Status: 2, Salt: "salt", Password: util.MD5("pwd" + "salt")},
+			targetUser:  &system.User{Model: gorm.Model{ID: 4}, Status: 2, Password: oauthPasswordHash},
 			wantErrCode: e.UserNotFound,
+			wantUpdated: false,
+		},
+		{
+			name:        "empty oauth id is rejected",
+			safeCode:    &safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: "   "},
+			identifier:  "test@example.com",
+			password:    "pwd",
+			targetUser:  &system.User{Model: gorm.Model{ID: 1}, Status: 1, Password: oauthPasswordHash},
+			wantErrCode: e.ERROR,
+			wantUpdated: false,
+		},
+		{
+			name:        "unsupported sync field is rejected",
+			safeCode:    &safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: "on_invalid_sync", OAuthProfile: &OAuthProfile{UserName: "飞书用户"}},
+			identifier:  "test@example.com",
+			password:    "pwd",
+			syncFields:  []string{"email"},
+			targetUser:  &system.User{Model: gorm.Model{ID: 1}, Status: 1, Password: oauthPasswordHash},
+			wantErrCode: e.InvalidParams,
 			wantUpdated: false,
 		},
 	}
@@ -799,17 +1123,32 @@ func TestAuthService_BindOAuth(t *testing.T) {
 					}
 					return nil, nil
 				},
-				DetailFunc: func(ctx context.Context, user *system.User) (*system.User, error) {
-					if tt.safeCode != nil && tt.safeCode.OauthType == "feishu" && user.FeishuId == tt.safeCode.OauthID {
+				GetOAuthUserFunc: func(ctx context.Context, oauthType, id string) (*system.User, error) {
+					if tt.safeCode != nil && oauthType == "feishu" && tt.safeCode.OauthType == "feishu" && id == tt.safeCode.OauthID {
 						return tt.bindUser, nil
 					}
-					if tt.safeCode != nil && tt.safeCode.OauthType == "wechat" && user.WechatId == tt.safeCode.OauthID {
+					if tt.safeCode != nil && oauthType == "wechat" && tt.safeCode.OauthType == "wechat" && id == tt.safeCode.OauthID {
 						return tt.bindUser, nil
 					}
 					return nil, nil
 				},
 				UpdateFunc: func(ctx context.Context, user *system.User) error {
 					updated = true
+					if user.ID != tt.targetUser.ID {
+						t.Fatalf("Update() user.ID = %d, want %d", user.ID, tt.targetUser.ID)
+					}
+					if user.FeishuId != tt.wantFeishuID {
+						t.Fatalf("Update() FeishuId = %s, want %s", user.FeishuId, tt.wantFeishuID)
+					}
+					if user.WechatId != tt.wantWechatID {
+						t.Fatalf("Update() WechatId = %s, want %s", user.WechatId, tt.wantWechatID)
+					}
+					if user.UserName != tt.wantUserName {
+						t.Fatalf("Update() UserName = %s, want %s", user.UserName, tt.wantUserName)
+					}
+					if user.Avatar != tt.wantAvatar {
+						t.Fatalf("Update() Avatar = %s, want %s", user.Avatar, tt.wantAvatar)
+					}
 					return nil
 				},
 			}
@@ -823,7 +1162,7 @@ func TestAuthService_BindOAuth(t *testing.T) {
 				return tt.safeCode, nil
 			}
 
-			errCode, _ := svc.BindOAuth(context.Background(), "dummy", tt.identifier, tt.password, tt.totpCode)
+			errCode, _ := svc.BindOAuth(context.Background(), "dummy", tt.identifier, tt.password, tt.totpCode, tt.syncFields)
 			if errCode != tt.wantErrCode {
 				t.Errorf("BindOAuth() errCode = %v, want %v", errCode, tt.wantErrCode)
 			}

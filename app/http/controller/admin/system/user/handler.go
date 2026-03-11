@@ -52,7 +52,7 @@ type params struct {
 	Email    string `json:"email"`
 	Phone    string `json:"phone"`
 	Status   int8   `json:"status"`
-	Password string `json:"password"`
+	Password string `json:"password" binding:"required_without=ID"`
 	Avatar   string `json:"avatar"`
 	FeishuID string `json:"feishu_id"`
 	WechatID string `json:"wechat_id"`
@@ -111,7 +111,7 @@ func (h handler) ResetPassword() gin.HandlerFunc {
 		var err error
 		var req struct {
 			UserID   uint   `json:"user_id" binding:"required"`
-			Password string `json:"password"`
+			Password string `json:"password" binding:"required"`
 		}
 
 		ctx := h.Context(c)
