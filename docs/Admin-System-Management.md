@@ -98,7 +98,7 @@
 | 管理员关闭用户 TFA | PUT | `/go-api/internal/admin/system/user/tfa/disable` |
 
 > **密码字段口径（与 `docs/Admin-Auth.md` 一致）**：
-> `password` 建议统一传 `md5(明文密码)`；服务端最终会使用随机 salt 再做一次 `MD5(password + salt)` 后存储。
+> `password` 建议统一传 `md5(明文密码)`；服务端将使用 bcrypt 存储该摘要。
 
 ---
 
@@ -131,8 +131,8 @@
   | list[].email | string | 邮箱 |
   | list[].phone | string | 手机号 |
   | list[].user_name | string | 用户名 |
-  | list[].feishu_id | string | 飞书 ID |
-  | list[].wechat_id | string | 微信 ID |
+  | list[].feishu_id | string | 飞书 `union_id` |
+  | list[].wechat_id | string | 企业微信 `userid` |
   | list[].totp_enabled | bool | 是否启用 TOTP |
   | list[].status | int8 | 状态：0 禁用、1 正常 |
   | list[].avatar | string | 头像 URL |
@@ -204,11 +204,11 @@
   | user_name | string | 否 | 用户名 |
   | email | string | 否 | 登录邮箱（与 phone 二选一或同时提供） |
   | phone | string | 否 | 登录手机号（与 email 二选一或同时提供） |
-  | password | string | 否 | 密码摘要，建议传 `md5(明文密码)`（空值时将使用默认初始密码逻辑） |
+  | password | string | 是 | 密码摘要，建议传 `md5(明文密码)` |
   | status | int8 | 否 | 状态，默认 1 |
   | avatar | string | 否 | 头像 URL |
-  | feishu_id | string | 否 | 飞书 ID |
-  | wechat_id | string | 否 | 微信 ID |
+  | feishu_id | string | 否 | 飞书 `union_id` |
+  | wechat_id | string | 否 | 企业微信 `userid` |
 
 - **成功返回**：`code=0`
 - **错误码**：`400`、`11013`、`11014`
@@ -243,8 +243,8 @@
   | password | string | 否 | 密码摘要，建议传 `md5(明文密码)`（空则不更新） |
   | status | int8 | 否 | 状态 |
   | avatar | string | 否 | 头像 URL |
-  | feishu_id | string | 否 | 飞书 ID |
-  | wechat_id | string | 否 | 微信 ID |
+  | feishu_id | string | 否 | 飞书 `union_id` |
+  | wechat_id | string | 否 | 企业微信 `userid` |
 
 - **成功返回**：`code=0`
 - **错误码**：`400`、`11002`、`11037`
@@ -331,7 +331,7 @@
   | 字段 | 类型 | 必填 | 说明 |
   | ---- | ---- | ---- | ---- |
   | user_id | uint | 是 | 用户 ID |
-  | password | string | 是 | 新密码摘要，建议传 `md5(明文密码)` |
+  | password | string | 是 | 新密码摘要，建议传 `md5(明文密码)`（服务端以 bcrypt 存储） |
 
 - **成功返回**：
   ```json

@@ -163,6 +163,8 @@ System management APIs are mounted at `/go-api/internal/admin/system`.
 }
 ```
 
+Note: `feishu_id` currently stores the Feishu `union_id`, and `wechat_id` currently stores the WeCom `userid`, both used for admin OAuth binding and login matching.
+
 `Role` list item (`/role/list`):
 ```json
 {
@@ -687,6 +689,8 @@ Content-Type: application/json
   "created_at": "2026-02-06T10:00:00+08:00"
 }
 ```
+
+说明：`feishu_id` 字段当前存储飞书 `union_id`，用于管理端 OAuth 绑定与登录匹配。
 
 `Role` 列表项（`/role/list`）：
 ```json

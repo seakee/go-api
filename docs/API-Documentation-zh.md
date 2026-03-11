@@ -150,6 +150,8 @@ Content-Type: application/json
 }
 ```
 
+说明：`feishu_id` 字段当前存储飞书 `union_id`，`wechat_id` 字段当前存储企业微信 `userid`，用于管理端 OAuth 绑定与登录匹配。
+
 `Role` 列表项（`/role/list`）：
 ```json
 {
