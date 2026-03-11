@@ -14,6 +14,11 @@
       "safe_code_expire_in": 180,
       "token_expire_in": 2592000,
       "jwt_secret": "",
+      "auth_rate_limit": {
+        "enable": true,
+        "window_seconds": 60,
+        "max_requests": 20
+      },
       "oauth": {
         "redirect_url": "http://127.0.0.1:3000/oauth",
         "feishu": {
