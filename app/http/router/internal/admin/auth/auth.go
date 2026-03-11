@@ -8,18 +8,19 @@ import (
 
 func registerAuthRoutes(api *gin.RouterGroup, ctx *http.Context) {
 	handler := auth.NewHandler(ctx)
+	rateLimitedAPI := api.Group("", ctx.Middleware.AdminAuthRateLimit())
 
 	api.GET("oauth/url", handler.OAuthUrl())
-	api.POST("token", handler.Token())
+	rateLimitedAPI.POST("token", handler.Token())
 	api.GET("profile", ctx.Middleware.CheckAdminAuth(), handler.Profile())
-	api.PUT("password/reset", handler.ResetPassword())
-	api.PUT("password", ctx.Middleware.CheckAdminAuth(), handler.UpdatePassword())
+	rateLimitedAPI.PUT("password/reset", handler.ResetPassword())
+	rateLimitedAPI.PUT("password", ctx.Middleware.CheckAdminAuth(), handler.UpdatePassword())
 	api.PUT("profile", ctx.Middleware.CheckAdminAuth(), handler.UpdateProfile())
 	api.GET("menus", ctx.Middleware.CheckAdminAuth(), handler.UserMenuList())
-	api.PUT("identifier", ctx.Middleware.CheckAdminAuth(), handler.UpdateIdentifier())
-	api.POST("oauth/bind", handler.BindOAuth())
-	api.PUT("tfa/enable", ctx.Middleware.CheckAdminAuth(), handler.EnableTfa())
-	api.PUT("tfa/disable", ctx.Middleware.CheckAdminAuth(), handler.DisableTfa())
+	rateLimitedAPI.PUT("identifier", ctx.Middleware.CheckAdminAuth(), handler.UpdateIdentifier())
+	rateLimitedAPI.POST("oauth/bind", handler.BindOAuth())
+	rateLimitedAPI.PUT("tfa/enable", ctx.Middleware.CheckAdminAuth(), handler.EnableTfa())
+	rateLimitedAPI.PUT("tfa/disable", ctx.Middleware.CheckAdminAuth(), handler.DisableTfa())
 	api.GET("tfa/key", ctx.Middleware.CheckAdminAuth(), handler.TotpKey())
 	api.GET("tfa/status", ctx.Middleware.CheckAdminAuth(), handler.TfaStatus())
 }

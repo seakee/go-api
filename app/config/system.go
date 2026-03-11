@@ -25,10 +25,17 @@ type SysConfig struct {
 
 // AdminConfig defines admin configuration options.
 type AdminConfig struct {
-	SafeCodeExpireIn int         `json:"safe_code_expire_in"`
-	TokenExpireIn    int64       `json:"token_expire_in"`
-	JwtSecret        string      `json:"jwt_secret"`
-	Oauth            OauthConfig `json:"oauth"`
+	SafeCodeExpireIn int                 `json:"safe_code_expire_in"`
+	TokenExpireIn    int64               `json:"token_expire_in"`
+	JwtSecret        string              `json:"jwt_secret"`
+	Oauth            OauthConfig         `json:"oauth"`
+	AuthRateLimit    AuthRateLimitConfig `json:"auth_rate_limit"`
+}
+
+type AuthRateLimitConfig struct {
+	Enable        bool `json:"enable"`
+	WindowSeconds int  `json:"window_seconds"`
+	MaxRequests   int  `json:"max_requests"`
 }
 
 // OauthConfig defines OAuth provider configuration options.

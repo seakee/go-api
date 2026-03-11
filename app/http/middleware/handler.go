@@ -23,6 +23,7 @@ type Middleware interface {
 	RequestLogger() gin.HandlerFunc
 	SetTraceID() gin.HandlerFunc
 	CheckAdminAuth() gin.HandlerFunc
+	AdminAuthRateLimit() gin.HandlerFunc
 	SaveOperationRecord() gin.HandlerFunc
 }
 

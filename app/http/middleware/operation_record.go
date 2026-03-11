@@ -3,7 +3,10 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -53,13 +56,17 @@ func (m middleware) getOrCreateTraceID(c *gin.Context) string {
 
 // getRequestParams retrieves request parameters based on request type.
 func (m middleware) getRequestParams(c *gin.Context) string {
+	if shouldOmitOperationPayload(c.Request.URL.Path) {
+		return `{"msg":"request payload omitted for sensitive endpoint"}`
+	}
+
 	switch {
 	case strings.Contains(c.GetHeader("Content-Type"), "boundary"):
 		return `{"msg":"upload file"}`
 	case c.Request.ContentLength > 65535:
 		return `{"msg":"request body too large"}`
 	case c.Request.Method == "GET":
-		return c.Request.URL.RawQuery
+		return sanitizeQueryParams(c.Request.URL.RawQuery)
 	default:
 		return m.getRawBody(c)
 	}
@@ -73,14 +80,19 @@ func (m middleware) getRawBody(c *gin.Context) string {
 		return ""
 	}
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
-	return string(body)
+
+	return formatSanitizedPayload(sanitizeRequestBody(c.GetHeader("Content-Type"), body))
 }
 
 // createOperationRecord creates an operation record.
 func (m middleware) createOperationRecord(c *gin.Context, params, traceID string, startTime time.Time, writer *responseBodyWriter) *system.OperationRecord {
 	responseBody := ""
 	if c.Request.Method != "GET" {
-		responseBody = writer.body.String()
+		if shouldOmitOperationPayload(c.Request.URL.Path) {
+			responseBody = `{"msg":"response payload omitted for sensitive endpoint"}`
+		} else {
+			responseBody = sanitizeResponseBody(writer.body.Bytes())
+		}
 	}
 
 	record := &system.OperationRecord{
@@ -137,4 +149,69 @@ func (r *responseBodyWriter) Write(b []byte) (int, error) {
 		r.errMessage = jsoniter.Get(b, "msg").ToString()
 	}
 	return r.ResponseWriter.Write(b)
+}
+
+func sanitizeQueryParams(rawQuery string) string {
+	if rawQuery == "" {
+		return ""
+	}
+
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return ""
+	}
+
+	result := make(map[string]any, len(values))
+	for key, val := range values {
+		if isSensitiveField(key) {
+			result[key] = "[REDACTED]"
+			continue
+		}
+		result[key] = strings.Join(val, ", ")
+	}
+
+	return formatSanitizedPayload(result)
+}
+
+func sanitizeResponseBody(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+
+	var payload any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return fmt.Sprintf("[omitted response body, %d bytes]", len(body))
+	}
+
+	redactSensitiveValue(payload)
+	return formatSanitizedPayload(payload)
+}
+
+func formatSanitizedPayload(payload any) string {
+	switch v := payload.(type) {
+	case string:
+		return v
+	default:
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Sprintf("%v", payload)
+		}
+		return string(buf)
+	}
+}
+
+func shouldOmitOperationPayload(path string) bool {
+	switch path {
+	case "/go-api/internal/admin/auth/token",
+		"/go-api/internal/admin/auth/password/reset",
+		"/go-api/internal/admin/auth/password",
+		"/go-api/internal/admin/auth/identifier",
+		"/go-api/internal/admin/auth/oauth/bind",
+		"/go-api/internal/admin/auth/tfa/enable",
+		"/go-api/internal/admin/auth/tfa/disable",
+		"/go-api/internal/admin/system/user/password/reset":
+		return true
+	default:
+		return false
+	}
 }

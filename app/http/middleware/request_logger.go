@@ -164,7 +164,8 @@ func isSensitiveField(field string) bool {
 	switch key {
 	case "password", "old_password", "new_password", "token", "access_token",
 		"refresh_token", "authorization", "app_secret", "secret",
-		"credentials", "safe_code", "totp_code", "jwt":
+		"credentials", "safe_code", "totp_code", "totp_key", "jwt",
+		"db_password", "client_secret", "corp_secret":
 		return true
 	}
 
