@@ -2,10 +2,12 @@ package system
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/glebarez/sqlite"
+	"github.com/seakee/go-api/app/config"
 	systemModel "github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/pkg/e"
 	pwd "github.com/seakee/go-api/app/pkg/password"
@@ -24,64 +26,148 @@ func TestAuthService_Reauth(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		user        *systemModel.User
-		totpCode    string
-		wantErrCode int
-		wantTicket  string
+		name                      string
+		identifier                string
+		password                  string
+		safeCode                  string
+		totpCode                  string
+		identifierUser            *systemModel.User
+		safeCodeUser              *systemModel.User
+		parsedSafeCode            *safeCode
+		wantErrCode               int
+		wantResult                ReauthResult
+		wantGeneratedSafeCode     *safeCode
+		wantGeneratedReauthTicket *reauthTicket
 	}{
 		{
-			name:        "password only reauth succeeds",
-			user:        &systemModel.User{Model: gorm.Model{ID: 1}, Status: 1, Password: passwordHash},
-			wantErrCode: e.SUCCESS,
-			wantTicket:  "reauth-token",
+			name:                      "password only reauth succeeds",
+			identifier:                "test@example.com",
+			password:                  "pwd",
+			identifierUser:            &systemModel.User{Model: gorm.Model{ID: 1}, Status: 1, Password: passwordHash},
+			wantErrCode:               e.SUCCESS,
+			wantResult:                ReauthResult{ReauthTicket: "reauth-token"},
+			wantGeneratedReauthTicket: &reauthTicket{UserID: 1, Action: "oauth_reauth"},
 		},
 		{
-			name:        "totp enabled requires valid code",
-			user:        &systemModel.User{Model: gorm.Model{ID: 2}, Status: 1, Password: passwordHash, TotpEnabled: true, TotpKey: totpKey},
-			totpCode:    validTotpCode,
-			wantErrCode: e.SUCCESS,
-			wantTicket:  "reauth-token",
+			name:                  "totp enabled returns safe code challenge from password step",
+			identifier:            "test@example.com",
+			password:              "pwd",
+			totpCode:              validTotpCode,
+			identifierUser:        &systemModel.User{Model: gorm.Model{ID: 2}, Status: 1, Password: passwordHash, TotpEnabled: true, TotpKey: totpKey},
+			wantErrCode:           e.NeedTfa,
+			wantResult:            ReauthResult{SafeCode: "reauth-safe-code"},
+			wantGeneratedSafeCode: &safeCode{UserID: 2, Action: "oauth_reauth"},
 		},
 		{
-			name:        "totp enabled rejects empty code",
-			user:        &systemModel.User{Model: gorm.Model{ID: 3}, Status: 1, Password: passwordHash, TotpEnabled: true, TotpKey: totpKey},
-			wantErrCode: e.TotpCodeCanNotBeNull,
+			name:                      "totp challenge succeeds with safe code",
+			safeCode:                  "reauth-safe-code",
+			totpCode:                  validTotpCode,
+			safeCodeUser:              &systemModel.User{Model: gorm.Model{ID: 3}, Status: 1, Password: passwordHash, TotpEnabled: true, TotpKey: totpKey},
+			parsedSafeCode:            &safeCode{UserID: 3, Action: "oauth_reauth"},
+			wantErrCode:               e.SUCCESS,
+			wantResult:                ReauthResult{ReauthTicket: "reauth-token"},
+			wantGeneratedReauthTicket: &reauthTicket{UserID: 3, Action: "oauth_reauth"},
+		},
+		{
+			name:           "totp challenge rejects invalid code",
+			safeCode:       "reauth-safe-code",
+			totpCode:       "000000",
+			safeCodeUser:   &systemModel.User{Model: gorm.Model{ID: 4}, Status: 1, Password: passwordHash, TotpEnabled: true, TotpKey: totpKey},
+			parsedSafeCode: &safeCode{UserID: 4, Action: "oauth_reauth"},
+			wantErrCode:    e.InvalidTotpCode,
+		},
+		{
+			name:           "totp challenge rejects invalid safe code action",
+			safeCode:       "reauth-safe-code",
+			totpCode:       validTotpCode,
+			parsedSafeCode: &safeCode{UserID: 5, Action: "tfa"},
+			wantErrCode:    e.InvalidSafeCode,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			safeCodeCalls := 0
+			reauthTicketCalls := 0
+
 			svc := &authService{
 				userRepo: &mockUserRepo{
 					DetailByIdentifierFunc: func(ctx context.Context, identifier string) (*systemModel.User, error) {
-						return tt.user, nil
+						if tt.identifierUser == nil {
+							t.Fatalf("DetailByIdentifier() called unexpectedly")
+						}
+						if identifier != tt.identifier {
+							t.Fatalf("DetailByIdentifier() identifier = %s, want %s", identifier, tt.identifier)
+						}
+						return tt.identifierUser, nil
+					},
+					DetailByIDFunc: func(ctx context.Context, id uint) (*systemModel.User, error) {
+						if tt.safeCodeUser == nil {
+							t.Fatalf("DetailByID() called unexpectedly")
+						}
+						if id != tt.safeCodeUser.ID {
+							t.Fatalf("DetailByID() id = %d, want %d", id, tt.safeCodeUser.ID)
+						}
+						return tt.safeCodeUser, nil
 					},
 				},
 				totp: generator,
-				generateReauthTicketFn: func(ctx context.Context, ticket reauthTicket) (string, error) {
-					if ticket.UserID != tt.user.ID {
-						t.Fatalf("generateReauthTicket() userID = %d, want %d", ticket.UserID, tt.user.ID)
+				generateSafeCodeFn: func(ctx context.Context, code safeCode) (string, error) {
+					safeCodeCalls++
+					if tt.wantGeneratedSafeCode == nil {
+						t.Fatalf("generateSafeCode() called unexpectedly")
 					}
-					if ticket.Action != "oauth_reauth" {
-						t.Fatalf("generateReauthTicket() action = %s, want oauth_reauth", ticket.Action)
+					if code.UserID != tt.wantGeneratedSafeCode.UserID || code.Action != tt.wantGeneratedSafeCode.Action {
+						t.Fatalf("generateSafeCode() payload = %+v, want %+v", code, *tt.wantGeneratedSafeCode)
+					}
+					return "reauth-safe-code", nil
+				},
+				parseSafeCodeFn: func(ctx context.Context, code string) (*safeCode, error) {
+					if tt.parsedSafeCode == nil {
+						t.Fatalf("parseSafeCode() called unexpectedly")
+					}
+					if code != tt.safeCode {
+						t.Fatalf("parseSafeCode() code = %s, want %s", code, tt.safeCode)
+					}
+					return tt.parsedSafeCode, nil
+				},
+				generateReauthTicketFn: func(ctx context.Context, ticket reauthTicket) (string, error) {
+					reauthTicketCalls++
+					if tt.wantGeneratedReauthTicket == nil {
+						t.Fatalf("generateReauthTicket() called unexpectedly")
+					}
+					if ticket.UserID != tt.wantGeneratedReauthTicket.UserID || ticket.Action != tt.wantGeneratedReauthTicket.Action {
+						t.Fatalf("generateReauthTicket() payload = %+v, want %+v", ticket, *tt.wantGeneratedReauthTicket)
 					}
 					return "reauth-token", nil
 				},
 			}
 
-			ticket, errCode, err := svc.Reauth(context.Background(), "test@example.com", "pwd", tt.totpCode)
+			result, errCode, err := svc.Reauth(context.Background(), tt.identifier, tt.password, tt.safeCode, tt.totpCode)
 			if err != nil {
 				t.Fatalf("Reauth() error = %v", err)
 			}
 			if errCode != tt.wantErrCode {
 				t.Fatalf("Reauth() errCode = %d, want %d", errCode, tt.wantErrCode)
 			}
-			if ticket != tt.wantTicket {
-				t.Fatalf("Reauth() ticket = %s, want %s", ticket, tt.wantTicket)
+			if result != tt.wantResult {
+				t.Fatalf("Reauth() result = %+v, want %+v", result, tt.wantResult)
+			}
+			if safeCodeCalls != btoi(tt.wantGeneratedSafeCode != nil) {
+				t.Fatalf("generateSafeCode() call count = %d, want %d", safeCodeCalls, btoi(tt.wantGeneratedSafeCode != nil))
+			}
+			if reauthTicketCalls != btoi(tt.wantGeneratedReauthTicket != nil) {
+				t.Fatalf("generateReauthTicket() call count = %d, want %d", reauthTicketCalls, btoi(tt.wantGeneratedReauthTicket != nil))
 			}
 		})
 	}
+}
+
+func btoi(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 func TestAuthService_UnbindOAuth(t *testing.T) {
@@ -130,9 +216,9 @@ func TestAuthService_UnbindOAuth(t *testing.T) {
 
 			svc := &authService{
 				userRepo: &mockUserRepo{
-					DetailFunc: func(ctx context.Context, user *systemModel.User) (*systemModel.User, error) {
-						if user.ID != 7 {
-							t.Fatalf("Detail() user id = %d, want 7", user.ID)
+					DetailByIDFunc: func(ctx context.Context, id uint) (*systemModel.User, error) {
+						if id != 7 {
+							t.Fatalf("DetailByID() id = %d, want 7", id)
 						}
 						return tt.user, nil
 					},
@@ -198,14 +284,21 @@ func TestAuthService_UnbindOAuth(t *testing.T) {
 
 func TestAuthService_ConfirmOAuthBind(t *testing.T) {
 	tests := []struct {
-		name         string
-		seedUsers    []systemModel.User
-		seedIdentity []systemModel.UserIdentity
-		bindTicket   *bindTicket
-		reauthTicket *reauthTicket
-		syncFields   []string
-		wantErrCode  int
-		verify       func(t *testing.T, db *gorm.DB)
+		name             string
+		seedUsers        []systemModel.User
+		seedIdentity     []systemModel.UserIdentity
+		bindTicket       *bindTicket
+		reauthTicket     *reauthTicket
+		syncFields       []string
+		consumeBindErr   error
+		consumeReauthErr error
+		wantErr          bool
+		wantErrCode      int
+		wantTokenUser    string
+		wantTokenUserID  uint
+		wantConsumeBind  bool
+		wantConsumeAuth  bool
+		verify           func(t *testing.T, db *gorm.DB)
 	}{
 		{
 			name: "bind creates identity and syncs profile",
@@ -218,9 +311,13 @@ func TestAuthService_ConfirmOAuthBind(t *testing.T) {
 				ProviderSubject: "user-001",
 				OAuthProfile:    &OAuthProfile{UserName: "来自飞书", Avatar: "https://example.com/avatar.png"},
 			},
-			reauthTicket: &reauthTicket{UserID: 1, Action: "oauth_reauth"},
-			syncFields:   []string{"user_name", "avatar"},
-			wantErrCode:  e.SUCCESS,
+			reauthTicket:    &reauthTicket{UserID: 1, Action: "oauth_reauth"},
+			syncFields:      []string{"user_name", "avatar"},
+			wantErrCode:     e.SUCCESS,
+			wantTokenUser:   "来自飞书",
+			wantTokenUserID: 1,
+			wantConsumeBind: true,
+			wantConsumeAuth: true,
 			verify: func(t *testing.T, db *gorm.DB) {
 				t.Helper()
 
@@ -262,13 +359,52 @@ func TestAuthService_ConfirmOAuthBind(t *testing.T) {
 				ProviderTenant:  "tenant-a",
 				ProviderSubject: "user-dup",
 			},
-			reauthTicket: &reauthTicket{UserID: 1, Action: "oauth_reauth"},
-			wantErrCode:  e.IdentifierConflict,
+			reauthTicket:    &reauthTicket{UserID: 1, Action: "oauth_reauth"},
+			wantErrCode:     e.IdentifierConflict,
+			wantConsumeBind: false,
+			wantConsumeAuth: false,
+		},
+		{
+			name: "bind fails when bind ticket cleanup fails",
+			seedUsers: []systemModel.User{
+				{Model: gorm.Model{ID: 1}, UserName: "before", Status: 1, Password: "hashed"},
+			},
+			bindTicket: &bindTicket{
+				Provider:        "feishu",
+				ProviderTenant:  "tenant-a",
+				ProviderSubject: "user-cleanup-bind",
+				OAuthProfile:    &OAuthProfile{UserName: "来自飞书"},
+			},
+			reauthTicket:    &reauthTicket{UserID: 1, Action: "oauth_reauth"},
+			consumeBindErr:  errors.New("delete bind ticket failed"),
+			wantErr:         true,
+			wantErrCode:     e.ERROR,
+			wantConsumeBind: true,
+			wantConsumeAuth: false,
+		},
+		{
+			name: "bind fails when reauth ticket cleanup fails",
+			seedUsers: []systemModel.User{
+				{Model: gorm.Model{ID: 1}, UserName: "before", Status: 1, Password: "hashed"},
+			},
+			bindTicket: &bindTicket{
+				Provider:        "feishu",
+				ProviderTenant:  "tenant-a",
+				ProviderSubject: "user-cleanup-reauth",
+				OAuthProfile:    &OAuthProfile{UserName: "来自飞书"},
+			},
+			reauthTicket:     &reauthTicket{UserID: 1, Action: "oauth_reauth"},
+			consumeReauthErr: errors.New("delete reauth ticket failed"),
+			wantErr:          true,
+			wantErrCode:      e.ERROR,
+			wantConsumeBind:  true,
+			wantConsumeAuth:  true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			const tokenExpireIn = int64(7200)
 			db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 			if err != nil {
 				t.Fatalf("gorm.Open() error = %v", err)
@@ -287,24 +423,74 @@ func TestAuthService_ConfirmOAuthBind(t *testing.T) {
 				}
 			}
 
+			consumedBind := false
+			consumedReauth := false
 			svc := &authService{
-				db: db,
+				userRepo: repo.NewUserRepo(db, nil, nil),
+				config: config.AdminConfig{
+					JwtSecret:     "oauth-bind-secret",
+					TokenExpireIn: tokenExpireIn,
+				},
 				parseBindTicketFn: func(ctx context.Context, code string) (*bindTicket, error) {
 					return tt.bindTicket, nil
 				},
 				parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
 					return tt.reauthTicket, nil
 				},
-				consumeBindTicketFn:   func(ctx context.Context, code string) error { return nil },
-				consumeReauthTicketFn: func(ctx context.Context, code string) error { return nil },
+				consumeBindTicketFn: func(ctx context.Context, code string) error {
+					if code != "bind-code" {
+						t.Fatalf("consumeBindTicket() code = %s, want bind-code", code)
+					}
+					consumedBind = true
+					return tt.consumeBindErr
+				},
+				consumeReauthTicketFn: func(ctx context.Context, code string) error {
+					if code != "reauth-code" {
+						t.Fatalf("consumeReauthTicket() code = %s, want reauth-code", code)
+					}
+					consumedReauth = true
+					return tt.consumeReauthErr
+				},
 			}
 
-			errCode, err := svc.ConfirmOAuthBind(context.Background(), "bind-code", "reauth-code", tt.syncFields)
-			if err != nil {
+			token, errCode, err := svc.ConfirmOAuthBind(context.Background(), "bind-code", "reauth-code", tt.syncFields)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("ConfirmOAuthBind() error = nil, want non-nil")
+				}
+			} else if err != nil {
 				t.Fatalf("ConfirmOAuthBind() error = %v", err)
 			}
 			if errCode != tt.wantErrCode {
 				t.Fatalf("ConfirmOAuthBind() errCode = %d, want %d", errCode, tt.wantErrCode)
+			}
+			if consumedBind != tt.wantConsumeBind {
+				t.Fatalf("consumeBindTicket() called = %v, want %v", consumedBind, tt.wantConsumeBind)
+			}
+			if consumedReauth != tt.wantConsumeAuth {
+				t.Fatalf("consumeReauthTicket() called = %v, want %v", consumedReauth, tt.wantConsumeAuth)
+			}
+			if tt.wantTokenUser == "" {
+				if token.Token != "" || token.ExpireIn != 0 {
+					t.Fatalf("ConfirmOAuthBind() token = %+v, want empty", token)
+				}
+			} else {
+				if token.Token == "" {
+					t.Fatalf("ConfirmOAuthBind() token is empty")
+				}
+				if token.ExpireIn != tokenExpireIn {
+					t.Fatalf("ConfirmOAuthBind() expires_in = %d, want %d", token.ExpireIn, tokenExpireIn)
+				}
+				userName, userID, verifyErr := svc.VerifyToken(token.Token)
+				if verifyErr != nil {
+					t.Fatalf("VerifyToken() error = %v", verifyErr)
+				}
+				if userName != tt.wantTokenUser {
+					t.Fatalf("VerifyToken() userName = %s, want %s", userName, tt.wantTokenUser)
+				}
+				if userID != tt.wantTokenUserID {
+					t.Fatalf("VerifyToken() userID = %d, want %d", userID, tt.wantTokenUserID)
+				}
 			}
 
 			if tt.verify != nil {
