@@ -8,5 +8,8 @@ import (
 const userCachePrefix = "admin:system:user"
 
 func clearUserCache(ctx context.Context, redis *redis.Manager) error {
+	if redis == nil {
+		return nil
+	}
 	return redis.BatchDelWithContext(ctx, userCachePrefix)
 }

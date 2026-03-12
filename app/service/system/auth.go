@@ -27,9 +27,11 @@ import (
 )
 
 const (
-	safeCodePrefix  = "admin:system:auth:safeCode:"
-	DefaultPassword = "Qaz123$%^"
-	oauthStateKey   = "admin:system:auth:oauth:%s"
+	safeCodePrefix     = "admin:system:auth:safeCode:"
+	bindTicketPrefix   = "admin:system:auth:bindTicket:"
+	reauthTicketPrefix = "admin:system:auth:reauthTicket:"
+	DefaultPassword    = "Qaz123$%^"
+	oauthStateKey      = "admin:system:auth:oauth:%s"
 
 	feishuUserAccessTokenAPI = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
 	feishuUserInfoAPI        = "https://open.feishu.cn/open-apis/authen/v1/user_info"
@@ -44,6 +46,7 @@ type AccessToken struct {
 	SafeCode       string        `json:"safe_code"`                 // Safe code for secondary verification
 	Token          string        `json:"token"`                     // JWT token
 	ExpireIn       int64         `json:"expires_in"`                // Token expiration time in seconds
+	BindTicket     string        `json:"bind_ticket,omitempty"`     // Ticket used to confirm third-party binding
 	OAuthProfile   *OAuthProfile `json:"oauth_profile,omitempty"`   // OAuth profile preview for bind confirmation
 	SyncableFields []string      `json:"syncable_fields,omitempty"` // Allowed fields that can be synced during bind
 }
@@ -60,6 +63,17 @@ type AuthParam struct {
 type OAuthProfile struct {
 	UserName string `json:"user_name,omitempty"`
 	Avatar   string `json:"avatar,omitempty"`
+}
+
+// OAuthAccount represents a third-party account linked to the current user.
+type OAuthAccount struct {
+	ID             uint       `json:"id"`
+	Provider       string     `json:"provider"`
+	ProviderTenant string     `json:"provider_tenant"`
+	DisplayName    string     `json:"display_name,omitempty"`
+	AvatarURL      string     `json:"avatar_url,omitempty"`
+	BoundAt        *time.Time `json:"bound_at,omitempty"`
+	LastLoginAt    *time.Time `json:"last_login_at,omitempty"`
 }
 
 // safeCode defines the structure of a safe code.
@@ -90,7 +104,10 @@ type AuthService interface {
 	ResetPassword(ctx context.Context, sCode string, password string) (errCode int, err error)
 	UpdatePassword(ctx context.Context, userID uint, totpCode, oldPassword, password string) (errCode int, err error)
 	UpdateIdentifier(ctx context.Context, userID uint, totpCode, password, email, phone string) (errCode int, err error)
-	BindOAuth(ctx context.Context, sCode, identifier, password, totpCode string, syncFields []string) (errCode int, err error)
+	Reauth(ctx context.Context, identifier, password, totpCode string) (ticket string, errCode int, err error)
+	ConfirmOAuthBind(ctx context.Context, bindTicket, reauthTicket string, syncFields []string) (errCode int, err error)
+	OAuthAccounts(ctx context.Context, userID uint) (accounts []OAuthAccount, errCode int, err error)
+	UnbindOAuth(ctx context.Context, userID, identityID uint, reauthTicket string) (errCode int, err error)
 	EnableTfa(ctx context.Context, userID uint, totpCode string, totpKey string) (errCode int, err error)
 	DisableTfa(ctx context.Context, userID uint, totpCode string) (errCode int, err error)
 	TotpKey(ctx context.Context, userID uint) (key, qrCode string, errCode int, err error)
@@ -100,16 +117,24 @@ type AuthService interface {
 
 // authService implements the AuthService interface.
 type authService struct {
-	redis           *redis.Manager
-	logger          *logger.Manager
-	userRepo        repo.UserRepo
-	totp            totp.Generator
-	authRepo        repo.AuthRepo
-	menuRepo        repo.MenuRepo
-	config          config.AdminConfig
-	request         *resty.Client
-	notify          *notify.Manager
-	parseSafeCodeFn func(ctx context.Context, code string) (*safeCode, error)
+	redis                  *redis.Manager
+	logger                 *logger.Manager
+	db                     *gorm.DB
+	userRepo               repo.UserRepo
+	identityRepo           repo.UserIdentityRepo
+	totp                   totp.Generator
+	authRepo               repo.AuthRepo
+	menuRepo               repo.MenuRepo
+	config                 config.AdminConfig
+	request                *resty.Client
+	notify                 *notify.Manager
+	parseSafeCodeFn        func(ctx context.Context, code string) (*safeCode, error)
+	parseBindTicketFn      func(ctx context.Context, code string) (*bindTicket, error)
+	generateBindTicketFn   func(ctx context.Context, ticket bindTicket) (string, error)
+	consumeBindTicketFn    func(ctx context.Context, code string) error
+	parseReauthTicketFn    func(ctx context.Context, code string) (*reauthTicket, error)
+	generateReauthTicketFn func(ctx context.Context, ticket reauthTicket) (string, error)
+	consumeReauthTicketFn  func(ctx context.Context, code string) error
 }
 
 // OauthUrl retrieves the OAuth URL.
@@ -683,9 +708,9 @@ func (a authService) Token(ctx context.Context, param *AuthParam) (token AccessT
 	case "totp":
 		user, errCode, err = a.verifyByTotp(ctx, param.Credentials, param.Identifier)
 	case "feishu":
-		user, errCode, err = a.verifyByFeishu(ctx, param.Credentials, param.State)
+		return a.tokenByOAuth(ctx, "feishu", param.Credentials, param.State)
 	case "wechat":
-		user, errCode, err = a.verifyByWechat(ctx, param.Credentials, param.State)
+		return a.tokenByOAuth(ctx, "wechat", param.Credentials, param.State)
 	default:
 		errCode = e.InvalidGrantType
 	}
@@ -723,13 +748,6 @@ func (a authService) Token(ctx context.Context, param *AuthParam) (token AccessT
 		if err != nil {
 			errCode = e.ERROR
 		}
-	case errCode == e.NeedBindOAuth:
-		if user != nil {
-			token.SafeCode = user.TotpKey
-			token.OAuthProfile = oauthProfileFromUser(user)
-			token.SyncableFields = syncableFieldsForProfile(token.OAuthProfile)
-		}
-		return
 	}
 
 	return
@@ -809,59 +827,21 @@ func applyOAuthProfileSync(updateUser *system.User, profile *OAuthProfile, syncF
 //   - errCode: Error code
 //   - err: Error message
 func (a authService) verifyByFeishu(ctx context.Context, code, state string) (user *system.User, errCode int, err error) {
-	oauthType, err := a.redis.GetStringWithContext(ctx, fmt.Sprintf(oauthStateKey, state))
-	if oauthType != "feishu" {
-		errCode = e.InvalidOauthState
-		return
+	if errCode = a.validateOAuthState(ctx, "feishu", state); errCode != e.SUCCESS {
+		return nil, errCode, nil
 	}
 
-	_, err = a.redis.DelWithContext(ctx, fmt.Sprintf(oauthStateKey, state))
+	identity, err := a.fetchOAuthIdentity(ctx, "feishu", code)
 	if err != nil {
-		a.logger.Error(ctx, "failed to delete Feishu authorization state", zap.Error(err))
+		return nil, e.ERROR, err
 	}
 
-	accessToken, err := a.getFeishuUserAccessToken(ctx, code)
+	user, err = a.userRepo.GetOAuthUser(ctx, identity.Provider, identity.ProviderTenant, identity.ProviderSubject)
 	if err != nil {
-		errCode = e.ERROR
-		return
+		return nil, e.ERROR, err
 	}
 
-	unionID, profile, err := a.getFeishuUserProfile(ctx, accessToken)
-	if err != nil {
-		errCode = e.ERROR
-		return
-	}
-
-	unionID = strings.TrimSpace(unionID)
-	if unionID == "" {
-		errCode = e.ERROR
-		err = errors.New("empty feishu union id")
-		return
-	}
-
-	user, err = a.userRepo.GetOAuthUser(ctx, "feishu", unionID)
-	if err != nil {
-		errCode = e.ERROR
-		return
-	}
-
-	if errCode = oauthLoginStatusErrCode(user); errCode != e.SUCCESS {
-		return
-	}
-
-	if user == nil {
-		var sc string
-		sc, err = a.generateSafeCode(ctx, safeCode{Action: "oauth_bind", OauthType: "feishu", OauthID: unionID, OAuthProfile: profile})
-		if err != nil {
-			errCode = e.ERROR
-			return
-		}
-
-		errCode = e.NeedBindOAuth
-		return &system.User{TotpKey: sc, UserName: profileUserName(profile), Avatar: profileAvatar(profile)}, errCode, nil
-	}
-
-	return
+	return user, oauthLoginStatusErrCode(user), nil
 }
 
 // getFeishuUserAccessToken retrieves Feishu user access token.
@@ -973,66 +953,21 @@ func (a authService) getFeishuUserProfile(ctx context.Context, token string) (un
 //   - errCode: Error code
 //   - err: Error message
 func (a authService) verifyByWechat(ctx context.Context, code, state string) (user *system.User, errCode int, err error) {
-	oauthType, err := a.redis.GetStringWithContext(ctx, fmt.Sprintf(oauthStateKey, state))
-	if oauthType != "wechat" {
-		errCode = e.InvalidOauthState
-		return
+	if errCode = a.validateOAuthState(ctx, "wechat", state); errCode != e.SUCCESS {
+		return nil, errCode, nil
 	}
 
-	_, err = a.redis.DelWithContext(ctx, fmt.Sprintf(oauthStateKey, state))
+	identity, err := a.fetchOAuthIdentity(ctx, "wechat", code)
 	if err != nil {
-		a.logger.Error(ctx, "failed to delete WeChat Work authorization state", zap.Error(err))
+		return nil, e.ERROR, err
 	}
 
-	accessToken, err := a.getWechatAccessToken(ctx)
+	user, err = a.userRepo.GetOAuthUser(ctx, identity.Provider, identity.ProviderTenant, identity.ProviderSubject)
 	if err != nil {
-		errCode = e.ERROR
-		return
+		return nil, e.ERROR, err
 	}
 
-	wechatUserID, err := a.getWechatUserID(ctx, accessToken, code)
-	if err != nil {
-		errCode = e.ERROR
-		return
-	}
-
-	wechatUserID = strings.TrimSpace(wechatUserID)
-	if wechatUserID == "" {
-		errCode = e.ERROR
-		err = errors.New("empty wechat userid")
-		return
-	}
-
-	user, err = a.userRepo.GetOAuthUser(ctx, "wechat", wechatUserID)
-	if err != nil {
-		errCode = e.ERROR
-		return
-	}
-
-	if errCode = oauthLoginStatusErrCode(user); errCode != e.SUCCESS {
-		return
-	}
-
-	if user == nil {
-		profile, profileErr := a.getWechatUserProfile(ctx, accessToken, wechatUserID)
-		if profileErr != nil && a.logger != nil {
-			a.logger.Error(ctx, "failed to fetch wechat profile for oauth bind preview",
-				zap.String("wechat_userid", wechatUserID),
-				zap.Error(profileErr))
-		}
-
-		var sc string
-		sc, err = a.generateSafeCode(ctx, safeCode{Action: "oauth_bind", OauthType: "wechat", OauthID: wechatUserID, OAuthProfile: profile})
-		if err != nil {
-			errCode = e.ERROR
-			return
-		}
-
-		errCode = e.NeedBindOAuth
-		return &system.User{TotpKey: sc, UserName: profileUserName(profile), Avatar: profileAvatar(profile)}, errCode, nil
-	}
-
-	return
+	return user, oauthLoginStatusErrCode(user), nil
 }
 
 // getWechatAccessToken retrieves WeChat Work access_token.
@@ -1382,106 +1317,6 @@ func (a authService) VerifyToken(tokenString string) (userName string, userID ui
 	return "", 0, errors.New("invalid token")
 }
 
-func (a authService) BindOAuth(ctx context.Context, sCode, identifier, password, totpCode string, syncFields []string) (errCode int, err error) {
-	if sCode == "" {
-		return e.SafeCodeCanNotBeNull, nil
-	}
-
-	identifier = strings.TrimSpace(identifier)
-	if identifier == "" {
-		return e.IdentifierCantBeNull, nil
-	}
-
-	var sc *safeCode
-	if a.parseSafeCodeFn != nil {
-		sc, err = a.parseSafeCodeFn(ctx, sCode)
-	} else {
-		sc, err = a.parseSafeCode(ctx, sCode)
-	}
-	if err != nil || sc == nil || sc.Action != "oauth_bind" {
-		return e.InvalidSafeCode, err
-	}
-
-	if sc.OauthType == "" || sc.OauthID == "" {
-		return e.InvalidSafeCode, nil
-	}
-
-	var user *system.User
-	user, err = a.userRepo.DetailByIdentifier(ctx, identifier)
-	if err != nil {
-		return e.ERROR, err
-	}
-
-	if user == nil || user.Status != 1 {
-		return e.UserNotFound, nil
-	}
-
-	if user.TotpEnabled {
-		if totpCode == "" {
-			return e.TotpCodeCanNotBeNull, nil
-		}
-
-		if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
-			return e.InvalidTotpCode, nil
-		}
-	} else {
-		if password == "" {
-			return e.IdentifierOrPasswordCanNotBeNull, nil
-		}
-
-		matched, verifyErr := pwd.VerifyCredential(user.Password, password)
-		if verifyErr != nil {
-			return e.ERROR, verifyErr
-		}
-		if !matched {
-			return e.IdentifierOrPasswordFail, nil
-		}
-	}
-
-	oauthID := strings.TrimSpace(sc.OauthID)
-	if oauthID == "" {
-		return e.ERROR, errors.New("empty oauth id")
-	}
-
-	if sc.OauthType == "feishu" {
-		bindUser, bindErr := a.userRepo.GetOAuthUser(ctx, "feishu", oauthID)
-		if bindErr != nil {
-			return e.ERROR, bindErr
-		}
-		if bindUser != nil && bindUser.ID != user.ID {
-			return e.IdentifierConflict, nil
-		}
-
-		updateUser := &system.User{Model: gorm.Model{ID: user.ID}, FeishuId: oauthID}
-		if err = applyOAuthProfileSync(updateUser, sc.OAuthProfile, syncFields); err != nil {
-			return e.InvalidParams, err
-		}
-		err = a.userRepo.Update(ctx, updateUser)
-	} else if sc.OauthType == "wechat" {
-		bindUser, bindErr := a.userRepo.GetOAuthUser(ctx, "wechat", oauthID)
-		if bindErr != nil {
-			return e.ERROR, bindErr
-		}
-		if bindUser != nil && bindUser.ID != user.ID {
-			return e.IdentifierConflict, nil
-		}
-
-		updateUser := &system.User{Model: gorm.Model{ID: user.ID}, WechatId: oauthID}
-		if err = applyOAuthProfileSync(updateUser, sc.OAuthProfile, syncFields); err != nil {
-			return e.InvalidParams, err
-		}
-		err = a.userRepo.Update(ctx, updateUser)
-	} else {
-		return e.InvalidOauthState, nil
-	}
-
-	if err != nil {
-		return e.ERROR, err
-	}
-
-	return e.SUCCESS, nil
-}
-
 // generateSafeCode generates a safe code.
 //
 // Parameters:
@@ -1549,14 +1384,16 @@ func NewAuthService(redis *redis.Manager, logger *logger.Manager, db *gorm.DB, n
 		cfg.TokenExpireIn = int64(config.Get().System.TokenExpire)
 	}
 	return &authService{
-		redis:    redis,
-		logger:   logger,
-		userRepo: repo.NewUserRepo(db, redis, logger),
-		totp:     totp.NewGenerator("go-api-admin"),
-		authRepo: repo.NewAuthRepo(db, redis, logger),
-		menuRepo: repo.NewMenuRepo(db, redis, logger),
-		config:   cfg,
-		request:  resty.New(),
-		notify:   notify,
+		redis:        redis,
+		logger:       logger,
+		db:           db,
+		userRepo:     repo.NewUserRepo(db, redis, logger),
+		identityRepo: repo.NewUserIdentityRepo(db, redis, logger),
+		totp:         totp.NewGenerator("go-api-admin"),
+		authRepo:     repo.NewAuthRepo(db, redis, logger),
+		menuRepo:     repo.NewMenuRepo(db, redis, logger),
+		config:       cfg,
+		request:      resty.New(),
+		notify:       notify,
 	}
 }

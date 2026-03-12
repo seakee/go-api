@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -29,7 +30,7 @@ type UserRepo interface {
 	UpdateIdentifier(ctx context.Context, user *system.User) error
 	UpdateTotpStatus(ctx context.Context, user *system.User) error
 	Paginate(ctx context.Context, user *system.User, page, pageSize int) ([]system.User, error)
-	GetOAuthUser(ctx context.Context, oauthType, id string) (*system.User, error)
+	GetOAuthUser(ctx context.Context, oauthType, tenant, id string) (*system.User, error)
 	Count(ctx context.Context, user *system.User) (int64, error)
 }
 
@@ -98,18 +99,6 @@ func (u userRepo) Update(ctx context.Context, user *system.User) error {
 
 	if user.Avatar != "" {
 		data["avatar"] = user.Avatar
-	}
-
-	if user.WechatId != "" {
-		data["wechat_id"] = user.WechatId
-	}
-
-	if user.GithubId != "" {
-		data["github_id"] = user.GithubId
-	}
-
-	if user.FeishuId != "" {
-		data["feishu_id"] = user.FeishuId
 	}
 
 	if user.Email != "" {
@@ -269,22 +258,28 @@ func (u userRepo) Detail(ctx context.Context, user *system.User) (*system.User, 
 	return user.First(ctx, u.db)
 }
 
-func (u userRepo) GetOAuthUser(ctx context.Context, oauthType, id string) (*system.User, error) {
+func (u userRepo) GetOAuthUser(ctx context.Context, oauthType, tenant, id string) (*system.User, error) {
+	normalizedProvider := strings.TrimSpace(oauthType)
+	normalizedTenant := strings.TrimSpace(tenant)
 	normalizedID := strings.TrimSpace(id)
-	if normalizedID == "" {
+	if normalizedProvider == "" || normalizedTenant == "" || normalizedID == "" {
 		return nil, nil
 	}
 
-	switch oauthType {
-	case "github":
-		return (&system.User{}).Where("github_id = ?", normalizedID).First(ctx, u.db)
-	case "feishu":
-		return (&system.User{}).Where("feishu_id = ?", normalizedID).First(ctx, u.db)
-	case "wechat":
-		return (&system.User{}).Where("wechat_id = ?", normalizedID).First(ctx, u.db)
-	default:
-		return nil, fmt.Errorf("%s type not support", oauthType)
+	var user system.User
+	err := u.db.WithContext(ctx).
+		Table(user.TableName()+" AS u").
+		Joins("JOIN sys_user_identity ui ON ui.user_id = u.id").
+		Where("ui.provider = ? AND ui.provider_tenant = ? AND ui.provider_subject = ?", normalizedProvider, normalizedTenant, normalizedID).
+		First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("find oauth user failed: %w", err)
 	}
+
+	return &user, nil
 }
 
 // NewUserRepo creates a new UserRepo instance.
