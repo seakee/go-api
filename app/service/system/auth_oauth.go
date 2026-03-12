@@ -288,6 +288,20 @@ func (a authService) ConfirmOAuthBind(ctx context.Context, bindTicketCode, reaut
 		return token, e.UserNotFound, nil
 	}
 
+	if err = a.consumeBindTicket(ctx, bindTicketCode); err != nil {
+		if a.logger != nil {
+			a.logger.Error(ctx, "failed to consume bind ticket", zap.Error(err))
+		}
+		return token, e.ERROR, err
+	}
+
+	if err = a.consumeReauthTicket(ctx, reauthTicketCode); err != nil {
+		if a.logger != nil {
+			a.logger.Error(ctx, "failed to consume reauth ticket", zap.Error(err))
+		}
+		return token, e.ERROR, err
+	}
+
 	tokenString, tokenErr := a.generateToken(boundUser.UserName, boundUser.ID)
 	if tokenErr != nil {
 		return token, e.ERROR, tokenErr
@@ -295,14 +309,6 @@ func (a authService) ConfirmOAuthBind(ctx context.Context, bindTicketCode, reaut
 
 	token.Token = tokenString
 	token.ExpireIn = a.config.TokenExpireIn
-
-	if err = a.consumeBindTicket(ctx, bindTicketCode); err != nil && a.logger != nil {
-		a.logger.Error(ctx, "failed to consume bind ticket", zap.Error(err))
-	}
-
-	if err = a.consumeReauthTicket(ctx, reauthTicketCode); err != nil && a.logger != nil {
-		a.logger.Error(ctx, "failed to consume reauth ticket", zap.Error(err))
-	}
 
 	return token, e.SUCCESS, nil
 }
