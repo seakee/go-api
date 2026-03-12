@@ -131,8 +131,6 @@
   | list[].email | string | 邮箱 |
   | list[].phone | string | 手机号 |
   | list[].user_name | string | 用户名 |
-  | list[].feishu_id | string | 飞书 `union_id` |
-  | list[].wechat_id | string | 企业微信 `userid` |
   | list[].totp_enabled | bool | 是否启用 TOTP |
   | list[].status | int8 | 状态：0 禁用、1 正常 |
   | list[].avatar | string | 头像 URL |
@@ -151,8 +149,6 @@
           "email": "admin@example.com",
           "phone": "+8613800000000",
           "user_name": "管理员",
-          "feishu_id": "",
-          "wechat_id": "",
           "totp_enabled": false,
           "status": 1,
           "avatar": "https://cdn.example/avatar/1.png",
@@ -192,9 +188,7 @@
     "phone": "+8613800000001",
     "password": "e10adc3949ba59abbe56e057f20f883e",
     "status": 1,
-    "avatar": "https://cdn.example/avatar.png",
-    "feishu_id": "",
-    "wechat_id": ""
+    "avatar": "https://cdn.example/avatar.png"
   }
   ```
 - **字段说明**：
@@ -207,8 +201,6 @@
   | password | string | 是 | 密码摘要，建议传 `md5(明文密码)` |
   | status | int8 | 否 | 状态，默认 1 |
   | avatar | string | 否 | 头像 URL |
-  | feishu_id | string | 否 | 飞书 `union_id` |
-  | wechat_id | string | 否 | 企业微信 `userid` |
 
 - **成功返回**：`code=0`
 - **错误码**：`400`、`11013`、`11014`
@@ -227,9 +219,7 @@
     "phone": "+8613800000001",
     "password": "",
     "status": 1,
-    "avatar": "https://cdn.example/avatar_new.png",
-    "feishu_id": "",
-    "wechat_id": ""
+    "avatar": "https://cdn.example/avatar_new.png"
   }
   ```
 - **字段说明**：
@@ -243,8 +233,6 @@
   | password | string | 否 | 密码摘要，建议传 `md5(明文密码)`（空则不更新） |
   | status | int8 | 否 | 状态 |
   | avatar | string | 否 | 头像 URL |
-  | feishu_id | string | 否 | 飞书 `union_id` |
-  | wechat_id | string | 否 | 企业微信 `userid` |
 
 - **成功返回**：`code=0`
 - **错误码**：`400`、`11002`、`11037`

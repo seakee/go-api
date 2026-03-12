@@ -153,8 +153,6 @@ System management APIs are mounted at `/go-api/internal/admin/system`.
 {
   "id": 1,
   "account": "admin",
-  "feishu_id": "",
-  "wechat_id": "",
   "totp_enabled": false,
   "user_name": "Administrator",
   "status": 1,
@@ -163,7 +161,7 @@ System management APIs are mounted at `/go-api/internal/admin/system`.
 }
 ```
 
-Note: `feishu_id` currently stores the Feishu `union_id`, and `wechat_id` currently stores the WeCom `userid`, both used for admin OAuth binding and login matching.
+Note: third-party account bindings are stored in the dedicated `sys_user_identity` table. The `User` model only keeps platform-owned profile fields.
 
 `Role` list item (`/role/list`):
 ```json
@@ -680,8 +678,6 @@ Content-Type: application/json
 {
   "id": 1,
   "account": "admin",
-  "feishu_id": "",
-  "wechat_id": "",
   "totp_enabled": false,
   "user_name": "管理员",
   "status": 1,
@@ -690,7 +686,7 @@ Content-Type: application/json
 }
 ```
 
-说明：`feishu_id` 字段当前存储飞书 `union_id`，用于管理端 OAuth 绑定与登录匹配。
+说明：第三方账号绑定已迁移到独立的 `sys_user_identity` 表中，`User` 仅保留平台自身资料字段。
 
 `Role` 列表项（`/role/list`）：
 ```json
