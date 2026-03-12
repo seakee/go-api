@@ -51,6 +51,12 @@ type AccessToken struct {
 	SyncableFields []string      `json:"syncable_fields,omitempty"` // Allowed fields that can be synced during bind
 }
 
+// ReauthResult defines the payload returned by the reauthentication flow.
+type ReauthResult struct {
+	SafeCode     string `json:"safe_code,omitempty"`
+	ReauthTicket string `json:"reauth_ticket,omitempty"`
+}
+
 // AuthParam defines the structure of authentication parameters.
 type AuthParam struct {
 	Identifier  string `json:"identifier"`                     // User identifier (email or phone; safe_code for totp)
@@ -104,7 +110,7 @@ type AuthService interface {
 	ResetPassword(ctx context.Context, sCode string, password string) (errCode int, err error)
 	UpdatePassword(ctx context.Context, userID uint, totpCode, oldPassword, password string) (errCode int, err error)
 	UpdateIdentifier(ctx context.Context, userID uint, totpCode, password, email, phone string) (errCode int, err error)
-	Reauth(ctx context.Context, identifier, password, totpCode string) (ticket string, errCode int, err error)
+	Reauth(ctx context.Context, identifier, password, safeCode, totpCode string) (result ReauthResult, errCode int, err error)
 	ConfirmOAuthBind(ctx context.Context, bindTicket, reauthTicket string, syncFields []string) (errCode int, err error)
 	OAuthAccounts(ctx context.Context, userID uint) (accounts []OAuthAccount, errCode int, err error)
 	UnbindOAuth(ctx context.Context, userID, identityID uint, reauthTicket string) (errCode int, err error)
@@ -128,6 +134,7 @@ type authService struct {
 	config                 config.AdminConfig
 	request                *resty.Client
 	notify                 *notify.Manager
+	generateSafeCodeFn     func(ctx context.Context, safeCode safeCode) (string, error)
 	parseSafeCodeFn        func(ctx context.Context, code string) (*safeCode, error)
 	parseBindTicketFn      func(ctx context.Context, code string) (*bindTicket, error)
 	generateBindTicketFn   func(ctx context.Context, ticket bindTicket) (string, error)
@@ -1327,6 +1334,10 @@ func (a authService) VerifyToken(tokenString string) (userName string, userID ui
 //   - string: Generated safe code
 //   - error: Error message
 func (a authService) generateSafeCode(ctx context.Context, safeCode safeCode) (string, error) {
+	if a.generateSafeCodeFn != nil {
+		return a.generateSafeCodeFn(ctx, safeCode)
+	}
+
 	// Generate random string as safe code
 	code := util.RandUpStr(32)
 

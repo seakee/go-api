@@ -129,20 +129,21 @@ func (h handler) UpdateIdentifier() gin.HandlerFunc {
 func (h handler) Reauth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			Identifier string `json:"identifier" binding:"required"`
-			Password   string `json:"password" binding:"required"`
+			Identifier string `json:"identifier"`
+			Password   string `json:"password"`
+			SafeCode   string `json:"safe_code"`
 			TotpCode   string `json:"totp_code"`
 		}
 
 		var err error
-		var ticket string
+		var result system.ReauthResult
 		errCode := e.InvalidParams
 
 		if err = c.ShouldBind(&req); err == nil {
-			ticket, errCode, err = h.service.Reauth(h.Context(c), req.Identifier, req.Password, req.TotpCode)
+			result, errCode, err = h.service.Reauth(h.Context(c), req.Identifier, req.Password, req.SafeCode, req.TotpCode)
 		}
 
-		h.I18n.JSON(c, errCode, gin.H{"reauth_ticket": ticket}, err)
+		h.I18n.JSON(c, errCode, result, err)
 	}
 }
 

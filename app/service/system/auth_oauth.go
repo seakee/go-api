@@ -149,46 +149,90 @@ func (a authService) validateOAuthState(ctx context.Context, provider, state str
 }
 
 // Reauth verifies local credentials before high-risk OAuth bind or unbind operations.
-func (a authService) Reauth(ctx context.Context, identifier, password, totpCode string) (ticket string, errCode int, err error) {
+func (a authService) Reauth(ctx context.Context, identifier, password, challengeCode, totpCode string) (result ReauthResult, errCode int, err error) {
+	challengeCode = strings.TrimSpace(challengeCode)
+	totpCode = strings.TrimSpace(totpCode)
+	if challengeCode != "" {
+		if totpCode == "" {
+			return result, e.TotpCodeCanNotBeNull, nil
+		}
+
+		var sc *safeCode
+		if a.parseSafeCodeFn != nil {
+			sc, err = a.parseSafeCodeFn(ctx, challengeCode)
+		} else {
+			sc, err = a.parseSafeCode(ctx, challengeCode)
+		}
+		if err != nil {
+			return result, e.InvalidSafeCode, err
+		}
+		if sc == nil || sc.Action != "oauth_reauth" || sc.UserID == 0 {
+			return result, e.InvalidSafeCode, nil
+		}
+
+		user, detailErr := a.userRepo.DetailByID(ctx, sc.UserID)
+		if detailErr != nil {
+			return result, e.ERROR, detailErr
+		}
+		if user == nil || user.Status != 1 {
+			return result, e.UserNotFound, nil
+		}
+		if !user.TotpEnabled || !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
+			return result, e.InvalidTotpCode, nil
+		}
+
+		result.ReauthTicket, err = a.generateReauthTicket(ctx, reauthTicket{
+			UserID: user.ID,
+			Action: "oauth_reauth",
+		})
+		if err != nil {
+			return result, e.ERROR, err
+		}
+
+		return result, e.SUCCESS, nil
+	}
+
 	identifier = strings.TrimSpace(identifier)
 	if identifier == "" || password == "" {
-		return "", e.IdentifierOrPasswordCanNotBeNull, nil
+		return result, e.IdentifierOrPasswordCanNotBeNull, nil
 	}
 
 	user, err := a.userRepo.DetailByIdentifier(ctx, identifier)
 	if err != nil {
-		return "", e.ERROR, err
+		return result, e.ERROR, err
 	}
 	if user == nil || user.Status != 1 {
-		return "", e.UserNotFound, nil
+		return result, e.UserNotFound, nil
 	}
 
 	matched, err := pwd.VerifyCredential(user.Password, password)
 	if err != nil {
-		return "", e.ERROR, err
+		return result, e.ERROR, err
 	}
 	if !matched {
-		return "", e.IdentifierOrPasswordFail, nil
+		return result, e.IdentifierOrPasswordFail, nil
 	}
 
 	if user.TotpEnabled {
-		if totpCode == "" {
-			return "", e.TotpCodeCanNotBeNull, nil
+		result.SafeCode, err = a.generateSafeCode(ctx, safeCode{
+			UserID: user.ID,
+			Action: "oauth_reauth",
+		})
+		if err != nil {
+			return result, e.ERROR, err
 		}
-		if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
-			return "", e.InvalidTotpCode, nil
-		}
+		return result, e.NeedTfa, nil
 	}
 
-	ticket, err = a.generateReauthTicket(ctx, reauthTicket{
+	result.ReauthTicket, err = a.generateReauthTicket(ctx, reauthTicket{
 		UserID: user.ID,
 		Action: "oauth_reauth",
 	})
 	if err != nil {
-		return "", e.ERROR, err
+		return result, e.ERROR, err
 	}
 
-	return ticket, e.SUCCESS, nil
+	return result, e.SUCCESS, nil
 }
 
 // ConfirmOAuthBind binds a verified third-party identity to the reauthenticated local account.
