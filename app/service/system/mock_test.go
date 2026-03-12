@@ -12,6 +12,7 @@ package system
 
 import (
 	"context"
+	"time"
 
 	"github.com/seakee/go-api/app/model/system"
 	repo "github.com/seakee/go-api/app/repository/system"
@@ -32,7 +33,7 @@ type mockUserRepo struct {
 	UpdateIdentifierFunc   func(ctx context.Context, user *system.User) error
 	UpdateTotpStatusFunc   func(ctx context.Context, user *system.User) error
 	PaginateFunc           func(ctx context.Context, user *system.User, page, pageSize int) ([]system.User, error)
-	GetOAuthUserFunc       func(ctx context.Context, oauthType, id string) (*system.User, error)
+	GetOAuthUserFunc       func(ctx context.Context, oauthType, tenant, id string) (*system.User, error)
 	CountFunc              func(ctx context.Context, user *system.User) (int64, error)
 }
 
@@ -127,9 +128,9 @@ func (m *mockUserRepo) Paginate(ctx context.Context, user *system.User, page, pa
 	return nil, nil
 }
 
-func (m *mockUserRepo) GetOAuthUser(ctx context.Context, oauthType, id string) (*system.User, error) {
+func (m *mockUserRepo) GetOAuthUser(ctx context.Context, oauthType, tenant, id string) (*system.User, error) {
 	if m.GetOAuthUserFunc != nil {
-		return m.GetOAuthUserFunc(ctx, oauthType, id)
+		return m.GetOAuthUserFunc(ctx, oauthType, tenant, id)
 	}
 	return nil, nil
 }
@@ -235,6 +236,57 @@ func (m *mockMenuRepo) Count(ctx context.Context, menu *system.Menu) (int64, err
 		return m.CountFunc(ctx, menu)
 	}
 	return 0, nil
+}
+
+type mockUserIdentityRepo struct {
+	DetailByProviderFunc    func(ctx context.Context, provider, tenant, subject string) (*system.UserIdentity, error)
+	DetailByIDAndUserIDFunc func(ctx context.Context, id, userID uint) (*system.UserIdentity, error)
+	ListByUserIDFunc        func(ctx context.Context, userID uint) ([]system.UserIdentity, error)
+	CreateFunc              func(ctx context.Context, identity *system.UserIdentity) (*system.UserIdentity, error)
+	UpdateLastLoginFunc     func(ctx context.Context, id uint, loginAt time.Time) error
+	DeleteByIDAndUserIDFunc func(ctx context.Context, id, userID uint) error
+}
+
+func (m *mockUserIdentityRepo) DetailByProvider(ctx context.Context, provider, tenant, subject string) (*system.UserIdentity, error) {
+	if m.DetailByProviderFunc != nil {
+		return m.DetailByProviderFunc(ctx, provider, tenant, subject)
+	}
+	return nil, nil
+}
+
+func (m *mockUserIdentityRepo) ListByUserID(ctx context.Context, userID uint) ([]system.UserIdentity, error) {
+	if m.ListByUserIDFunc != nil {
+		return m.ListByUserIDFunc(ctx, userID)
+	}
+	return nil, nil
+}
+
+func (m *mockUserIdentityRepo) DetailByIDAndUserID(ctx context.Context, id, userID uint) (*system.UserIdentity, error) {
+	if m.DetailByIDAndUserIDFunc != nil {
+		return m.DetailByIDAndUserIDFunc(ctx, id, userID)
+	}
+	return nil, nil
+}
+
+func (m *mockUserIdentityRepo) Create(ctx context.Context, identity *system.UserIdentity) (*system.UserIdentity, error) {
+	if m.CreateFunc != nil {
+		return m.CreateFunc(ctx, identity)
+	}
+	return identity, nil
+}
+
+func (m *mockUserIdentityRepo) UpdateLastLogin(ctx context.Context, id uint, loginAt time.Time) error {
+	if m.UpdateLastLoginFunc != nil {
+		return m.UpdateLastLoginFunc(ctx, id, loginAt)
+	}
+	return nil
+}
+
+func (m *mockUserIdentityRepo) DeleteByIDAndUserID(ctx context.Context, id, userID uint) error {
+	if m.DeleteByIDAndUserIDFunc != nil {
+		return m.DeleteByIDAndUserIDFunc(ctx, id, userID)
+	}
+	return nil
 }
 
 // mockOperationRecordRepo is a mock implementation of the OperationRecordRepo interface.
