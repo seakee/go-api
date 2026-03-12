@@ -111,7 +111,7 @@ type AuthService interface {
 	UpdatePassword(ctx context.Context, userID uint, totpCode, oldPassword, password string) (errCode int, err error)
 	UpdateIdentifier(ctx context.Context, userID uint, totpCode, password, email, phone string) (errCode int, err error)
 	Reauth(ctx context.Context, identifier, password, safeCode, totpCode string) (result ReauthResult, errCode int, err error)
-	ConfirmOAuthBind(ctx context.Context, bindTicket, reauthTicket string, syncFields []string) (errCode int, err error)
+	ConfirmOAuthBind(ctx context.Context, bindTicket, reauthTicket string, syncFields []string) (token AccessToken, errCode int, err error)
 	OAuthAccounts(ctx context.Context, userID uint) (accounts []OAuthAccount, errCode int, err error)
 	UnbindOAuth(ctx context.Context, userID, identityID uint, reauthTicket string) (errCode int, err error)
 	EnableTfa(ctx context.Context, userID uint, totpCode string, totpKey string) (errCode int, err error)
@@ -799,27 +799,6 @@ func syncableFieldsForProfile(profile *OAuthProfile) []string {
 	}
 
 	return fields
-}
-
-func applyOAuthProfileSync(updateUser *system.User, profile *OAuthProfile, syncFields []string) error {
-	if len(syncFields) == 0 || profile == nil {
-		return nil
-	}
-
-	for _, field := range syncFields {
-		switch strings.TrimSpace(field) {
-		case "user_name":
-			updateUser.UserName = strings.TrimSpace(profile.UserName)
-		case "avatar":
-			updateUser.Avatar = strings.TrimSpace(profile.Avatar)
-		case "":
-			continue
-		default:
-			return fmt.Errorf("unsupported oauth sync field: %s", field)
-		}
-	}
-
-	return nil
 }
 
 // verifyByFeishu verifies user identity using Feishu authorization code.

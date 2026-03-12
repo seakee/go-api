@@ -155,14 +155,15 @@ func (h handler) ConfirmOAuthBind() gin.HandlerFunc {
 			SyncFields   []string `json:"sync_fields"`
 		}
 
+		var token system.AccessToken
 		var err error
 		errCode := e.InvalidParams
 
 		if err = c.ShouldBind(&req); err == nil {
-			errCode, err = h.service.ConfirmOAuthBind(h.Context(c), req.BindTicket, req.ReauthTicket, req.SyncFields)
+			token, errCode, err = h.service.ConfirmOAuthBind(h.Context(c), req.BindTicket, req.ReauthTicket, req.SyncFields)
 		}
 
-		h.I18n.JSON(c, errCode, nil, err)
+		h.I18n.JSON(c, errCode, token, err)
 	}
 }
 

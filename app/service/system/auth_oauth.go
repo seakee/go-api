@@ -233,28 +233,29 @@ func (a authService) Reauth(ctx context.Context, identifier, password, challenge
 	return result, e.SUCCESS, nil
 }
 
-// ConfirmOAuthBind binds a verified third-party identity to the reauthenticated local account.
-func (a authService) ConfirmOAuthBind(ctx context.Context, bindTicketCode, reauthTicketCode string, syncFields []string) (errCode int, err error) {
+// ConfirmOAuthBind binds a verified third-party identity to the reauthenticated local account and completes login.
+func (a authService) ConfirmOAuthBind(ctx context.Context, bindTicketCode, reauthTicketCode string, syncFields []string) (token AccessToken, errCode int, err error) {
 	if strings.TrimSpace(bindTicketCode) == "" {
-		return e.BindTicketCanNotBeNull, nil
+		return token, e.BindTicketCanNotBeNull, nil
 	}
+
 	if strings.TrimSpace(reauthTicketCode) == "" {
-		return e.ReauthTicketCanNotBeNull, nil
+		return token, e.ReauthTicketCanNotBeNull, nil
 	}
 
 	bindTicket, err := a.parseBindTicket(ctx, bindTicketCode)
 	if err != nil || bindTicket == nil {
-		return e.InvalidBindTicket, err
+		return token, e.InvalidBindTicket, err
 	}
 
 	reauthTicket, err := a.parseReauthTicket(ctx, reauthTicketCode)
 	if err != nil || reauthTicket == nil || reauthTicket.Action != "oauth_reauth" || reauthTicket.UserID == 0 {
-		return e.InvalidReauthTicket, err
+		return token, e.InvalidReauthTicket, err
 	}
 
 	syncUserName, syncAvatar, err := buildOAuthProfileSync(bindTicket.OAuthProfile, syncFields)
 	if err != nil {
-		return e.ERROR, err
+		return token, e.ERROR, err
 	}
 
 	err = a.userRepo.BindOAuthIdentity(ctx, repo.OAuthBindInput{
@@ -271,22 +272,39 @@ func (a authService) ConfirmOAuthBind(ctx context.Context, bindTicketCode, reaut
 	if err != nil {
 		switch {
 		case errors.Is(err, repo.ErrOAuthIdentityConflict):
-			return e.IdentifierConflict, nil
+			return token, e.IdentifierConflict, nil
 		case errors.Is(err, repo.ErrOAuthBindUserNotFound):
-			return e.UserNotFound, nil
+			return token, e.UserNotFound, nil
 		default:
-			return e.ERROR, err
+			return token, e.ERROR, err
 		}
 	}
+
+	boundUser, detailErr := a.userRepo.DetailByID(ctx, reauthTicket.UserID)
+	if detailErr != nil {
+		return token, e.ERROR, detailErr
+	}
+	if boundUser == nil || boundUser.Status != 1 {
+		return token, e.UserNotFound, nil
+	}
+
+	tokenString, tokenErr := a.generateToken(boundUser.UserName, boundUser.ID)
+	if tokenErr != nil {
+		return token, e.ERROR, tokenErr
+	}
+
+	token.Token = tokenString
+	token.ExpireIn = a.config.TokenExpireIn
 
 	if err = a.consumeBindTicket(ctx, bindTicketCode); err != nil && a.logger != nil {
 		a.logger.Error(ctx, "failed to consume bind ticket", zap.Error(err))
 	}
+
 	if err = a.consumeReauthTicket(ctx, reauthTicketCode); err != nil && a.logger != nil {
 		a.logger.Error(ctx, "failed to consume reauth ticket", zap.Error(err))
 	}
 
-	return e.SUCCESS, nil
+	return token, e.SUCCESS, nil
 }
 
 // OAuthAccounts returns the third-party identities bound to the current user.
