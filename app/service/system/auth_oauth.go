@@ -2,13 +2,11 @@ package system
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	systemModel "github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/pkg/e"
 	pwd "github.com/seakee/go-api/app/pkg/password"
 	repo "github.com/seakee/go-api/app/repository/system"
@@ -254,65 +252,27 @@ func (a authService) ConfirmOAuthBind(ctx context.Context, bindTicketCode, reaut
 		return e.InvalidReauthTicket, err
 	}
 
-	err = a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		identityRepo := repo.NewUserIdentityRepo(tx, a.redis, a.logger)
-		userRepo := repo.NewUserRepo(tx, a.redis, a.logger)
+	syncUserName, syncAvatar, err := buildOAuthProfileSync(bindTicket.OAuthProfile, syncFields)
+	if err != nil {
+		return e.ERROR, err
+	}
 
-		boundIdentity, detailErr := identityRepo.DetailByProvider(ctx, bindTicket.Provider, bindTicket.ProviderTenant, bindTicket.ProviderSubject)
-		if detailErr != nil {
-			return detailErr
-		}
-		if boundIdentity != nil && boundIdentity.UserID != reauthTicket.UserID {
-			return errOAuthIdentityConflict
-		}
-
-		boundUser, detailErr := userRepo.Detail(ctx, &systemModel.User{Model: gorm.Model{ID: reauthTicket.UserID}})
-		if detailErr != nil {
-			return detailErr
-		}
-		if boundUser == nil || boundUser.Status != 1 {
-			return errUserNotFoundForBind
-		}
-
-		if boundIdentity == nil {
-			now := time.Now()
-			userIdentity := &systemModel.UserIdentity{
-				UserID:          reauthTicket.UserID,
-				Provider:        bindTicket.Provider,
-				ProviderTenant:  bindTicket.ProviderTenant,
-				ProviderSubject: bindTicket.ProviderSubject,
-				DisplayName:     profileUserName(bindTicket.OAuthProfile),
-				AvatarURL:       profileAvatar(bindTicket.OAuthProfile),
-				BoundAt:         &now,
-				LastLoginAt:     &now,
-			}
-
-			rawProfileJSON, marshalErr := json.Marshal(bindTicket.OAuthProfile)
-			if marshalErr != nil {
-				return marshalErr
-			}
-			userIdentity.RawProfileJSON = string(rawProfileJSON)
-
-			if _, createErr := identityRepo.Create(ctx, userIdentity); createErr != nil {
-				return createErr
-			}
-		}
-
-		updateUser := &systemModel.User{Model: gorm.Model{ID: reauthTicket.UserID}}
-		if applyErr := applyOAuthProfileSync(updateUser, bindTicket.OAuthProfile, syncFields); applyErr != nil {
-			return applyErr
-		}
-		if updateErr := userRepo.Update(ctx, updateUser); updateErr != nil {
-			return updateErr
-		}
-
-		return nil
+	err = a.userRepo.BindOAuthIdentity(ctx, repo.OAuthBindInput{
+		UserID:          reauthTicket.UserID,
+		Provider:        bindTicket.Provider,
+		ProviderTenant:  bindTicket.ProviderTenant,
+		ProviderSubject: bindTicket.ProviderSubject,
+		DisplayName:     profileUserName(bindTicket.OAuthProfile),
+		AvatarURL:       profileAvatar(bindTicket.OAuthProfile),
+		RawProfile:      bindTicket.OAuthProfile,
+		SyncUserName:    syncUserName,
+		SyncAvatar:      syncAvatar,
 	})
 	if err != nil {
 		switch {
-		case errors.Is(err, errOAuthIdentityConflict):
+		case errors.Is(err, repo.ErrOAuthIdentityConflict):
 			return e.IdentifierConflict, nil
-		case errors.Is(err, errUserNotFoundForBind):
+		case errors.Is(err, repo.ErrOAuthBindUserNotFound):
 			return e.UserNotFound, nil
 		default:
 			return e.ERROR, err
@@ -379,7 +339,7 @@ func (a authService) UnbindOAuth(ctx context.Context, userID, identityID uint, r
 		return e.ERROR, err
 	}
 
-	currentUser, err := a.userRepo.Detail(ctx, &systemModel.User{Model: gorm.Model{ID: userID}})
+	currentUser, err := a.userRepo.DetailByID(ctx, userID)
 	if err != nil {
 		return e.ERROR, err
 	}
@@ -409,7 +369,23 @@ func (a authService) UnbindOAuth(ctx context.Context, userID, identityID uint, r
 	return e.SUCCESS, nil
 }
 
-var (
-	errOAuthIdentityConflict = errors.New("oauth identity already bound")
-	errUserNotFoundForBind   = errors.New("oauth bind target user not found")
-)
+func buildOAuthProfileSync(profile *OAuthProfile, syncFields []string) (userName, avatar string, err error) {
+	if len(syncFields) == 0 || profile == nil {
+		return "", "", nil
+	}
+
+	for _, field := range syncFields {
+		switch strings.TrimSpace(field) {
+		case "user_name":
+			userName = strings.TrimSpace(profile.UserName)
+		case "avatar":
+			avatar = strings.TrimSpace(profile.Avatar)
+		case "":
+			continue
+		default:
+			return "", "", fmt.Errorf("unsupported oauth sync field: %s", field)
+		}
+	}
+
+	return userName, avatar, nil
+}

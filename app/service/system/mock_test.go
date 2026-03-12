@@ -34,6 +34,7 @@ type mockUserRepo struct {
 	UpdateTotpStatusFunc   func(ctx context.Context, user *system.User) error
 	PaginateFunc           func(ctx context.Context, user *system.User, page, pageSize int) ([]system.User, error)
 	GetOAuthUserFunc       func(ctx context.Context, oauthType, tenant, id string) (*system.User, error)
+	BindOAuthIdentityFunc  func(ctx context.Context, input repo.OAuthBindInput) error
 	CountFunc              func(ctx context.Context, user *system.User) (int64, error)
 }
 
@@ -133,6 +134,13 @@ func (m *mockUserRepo) GetOAuthUser(ctx context.Context, oauthType, tenant, id s
 		return m.GetOAuthUserFunc(ctx, oauthType, tenant, id)
 	}
 	return nil, nil
+}
+
+func (m *mockUserRepo) BindOAuthIdentity(ctx context.Context, input repo.OAuthBindInput) error {
+	if m.BindOAuthIdentityFunc != nil {
+		return m.BindOAuthIdentityFunc(ctx, input)
+	}
+	return nil
 }
 
 func (m *mockUserRepo) Count(ctx context.Context, user *system.User) (int64, error) {

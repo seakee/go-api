@@ -2,9 +2,11 @@ package system
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/model/system/role"
@@ -31,7 +33,25 @@ type UserRepo interface {
 	UpdateTotpStatus(ctx context.Context, user *system.User) error
 	Paginate(ctx context.Context, user *system.User, page, pageSize int) ([]system.User, error)
 	GetOAuthUser(ctx context.Context, oauthType, tenant, id string) (*system.User, error)
+	BindOAuthIdentity(ctx context.Context, input OAuthBindInput) error
 	Count(ctx context.Context, user *system.User) (int64, error)
+}
+
+var (
+	ErrOAuthIdentityConflict = errors.New("oauth identity already bound")
+	ErrOAuthBindUserNotFound = errors.New("oauth bind target user not found")
+)
+
+type OAuthBindInput struct {
+	UserID          uint
+	Provider        string
+	ProviderTenant  string
+	ProviderSubject string
+	DisplayName     string
+	AvatarURL       string
+	RawProfile      interface{}
+	SyncUserName    string
+	SyncAvatar      string
 }
 
 type userRepo struct {
@@ -280,6 +300,83 @@ func (u userRepo) GetOAuthUser(ctx context.Context, oauthType, tenant, id string
 	}
 
 	return &user, nil
+}
+
+func (u userRepo) BindOAuthIdentity(ctx context.Context, input OAuthBindInput) error {
+	if input.UserID == 0 {
+		return fmt.Errorf("user id is empty")
+	}
+
+	normalizedProvider := strings.TrimSpace(input.Provider)
+	normalizedTenant := strings.TrimSpace(input.ProviderTenant)
+	normalizedSubject := strings.TrimSpace(input.ProviderSubject)
+	if normalizedProvider == "" || normalizedTenant == "" || normalizedSubject == "" {
+		return fmt.Errorf("oauth identity is incomplete")
+	}
+
+	if err := clearUserCache(ctx, u.redis); err != nil && u.logger != nil {
+		u.logger.Error(ctx, "clear user cache failed", zap.String("action", "bind oauth identity"), zap.Error(err))
+	}
+
+	return u.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		identityRepo := userIdentityRepo{db: tx, redis: u.redis, logger: u.logger}
+
+		boundIdentity, err := identityRepo.DetailByProvider(ctx, normalizedProvider, normalizedTenant, normalizedSubject)
+		if err != nil {
+			return err
+		}
+		if boundIdentity != nil && boundIdentity.UserID != input.UserID {
+			return ErrOAuthIdentityConflict
+		}
+
+		boundUser, err := (&system.User{Model: gorm.Model{ID: input.UserID}}).First(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if boundUser == nil || boundUser.Status != 1 {
+			return ErrOAuthBindUserNotFound
+		}
+
+		if boundIdentity == nil {
+			now := time.Now()
+			userIdentity := &system.UserIdentity{
+				UserID:          input.UserID,
+				Provider:        normalizedProvider,
+				ProviderTenant:  normalizedTenant,
+				ProviderSubject: normalizedSubject,
+				DisplayName:     strings.TrimSpace(input.DisplayName),
+				AvatarURL:       strings.TrimSpace(input.AvatarURL),
+				BoundAt:         &now,
+				LastLoginAt:     &now,
+			}
+
+			if input.RawProfile != nil {
+				rawProfileJSON, err := json.Marshal(input.RawProfile)
+				if err != nil {
+					return err
+				}
+				userIdentity.RawProfileJSON = string(rawProfileJSON)
+			}
+
+			if _, err := userIdentity.Create(ctx, tx); err != nil {
+				return fmt.Errorf("create user identity failed: %w", err)
+			}
+		}
+
+		updates := make(map[string]interface{})
+		if userName := strings.TrimSpace(input.SyncUserName); userName != "" {
+			updates["user_name"] = userName
+		}
+		if avatar := strings.TrimSpace(input.SyncAvatar); avatar != "" {
+			updates["avatar"] = avatar
+		}
+		if len(updates) == 0 {
+			return nil
+		}
+
+		updateUser := &system.User{Model: gorm.Model{ID: input.UserID}}
+		return updateUser.Updates(ctx, tx, updates)
+	})
 }
 
 // NewUserRepo creates a new UserRepo instance.
