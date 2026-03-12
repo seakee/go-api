@@ -53,5 +53,11 @@
   "11040": "OAuth type not supported",
   "11041": "Invalid OAuth state",
   "11042": "OAuth bind required",
-  "11043": "Identifier conflict"
+  "11043": "Identifier conflict",
+  "11044": "Bind ticket cannot be null",
+  "11045": "Invalid bind ticket",
+  "11046": "Reauth ticket cannot be null",
+  "11047": "Invalid reauth ticket",
+  "11048": "OAuth account not bound",
+  "11049": "At least one login method must remain available"
 }

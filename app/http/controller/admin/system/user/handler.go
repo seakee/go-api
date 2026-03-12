@@ -36,8 +36,6 @@ type info struct {
 	ID          uint      `json:"id"`
 	Email       string    `json:"email"`
 	Phone       string    `json:"phone"`
-	FeishuID    string    `json:"feishu_id"`
-	WechatID    string    `json:"wechat_id"`
 	TotpEnabled bool      `json:"totp_enabled"`
 	UserName    string    `json:"user_name"`
 	Status      int8      `json:"status"`
@@ -54,8 +52,6 @@ type params struct {
 	Status   int8   `json:"status"`
 	Password string `json:"password" binding:"required_without=ID"`
 	Avatar   string `json:"avatar"`
-	FeishuID string `json:"feishu_id"`
-	WechatID string `json:"wechat_id"`
 }
 
 func (h handler) Roles() gin.HandlerFunc {
@@ -194,8 +190,6 @@ func (h handler) Paginate() gin.HandlerFunc {
 				ID:          list[i].ID,
 				Email:       list[i].Email,
 				Phone:       list[i].Phone,
-				FeishuID:    list[i].FeishuId,
-				WechatID:    list[i].WechatId,
 				TotpEnabled: list[i].TotpEnabled,
 				UserName:    list[i].UserName,
 				Status:      list[i].Status,
@@ -231,8 +225,6 @@ func (h handler) Detail() gin.HandlerFunc {
 					ID:          a.ID,
 					Email:       a.Email,
 					Phone:       a.Phone,
-					FeishuID:    a.FeishuId,
-					WechatID:    a.WechatId,
 					TotpEnabled: a.TotpEnabled,
 					UserName:    a.UserName,
 					Status:      a.Status,
@@ -263,8 +255,6 @@ func (h handler) Create() gin.HandlerFunc {
 				Password: req.Password,
 				Avatar:   req.Avatar,
 				Status:   req.Status,
-				FeishuId: req.FeishuID,
-				WechatId: req.WechatID,
 			}
 
 			errCode, err = h.service.Create(ctx, perm)
@@ -312,8 +302,6 @@ func (h handler) Update() gin.HandlerFunc {
 					Password: req.Password,
 					Avatar:   req.Avatar,
 					Status:   req.Status,
-					FeishuId: req.FeishuID,
-					WechatId: req.WechatID,
 				}
 
 				errCode, err = h.service.Update(ctx, a)

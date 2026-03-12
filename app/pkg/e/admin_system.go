@@ -45,6 +45,12 @@ const (
 	InvalidOauthState                = 11041
 	NeedBindOAuth                    = 11042
 	IdentifierConflict               = 11043
+	BindTicketCanNotBeNull           = 11044
+	InvalidBindTicket                = 11045
+	ReauthTicketCanNotBeNull         = 11046
+	InvalidReauthTicket              = 11047
+	OauthAccountNotBound             = 11048
+	LastLoginMethodCannotBeRemoved   = 11049
 
 	// Backward-compatible aliases
 	AccountOrPasswordCanNotBeNull  = IdentifierOrPasswordCanNotBeNull

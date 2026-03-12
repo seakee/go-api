@@ -19,11 +19,14 @@ type Handler interface {
 	UpdatePassword() gin.HandlerFunc
 
 	OAuthUrl() gin.HandlerFunc
+	Reauth() gin.HandlerFunc
+	ConfirmOAuthBind() gin.HandlerFunc
+	OAuthAccounts() gin.HandlerFunc
+	UnbindOAuth() gin.HandlerFunc
 
 	UserMenuList() gin.HandlerFunc
 
 	UpdateIdentifier() gin.HandlerFunc
-	BindOAuth() gin.HandlerFunc
 
 	DisableTfa() gin.HandlerFunc
 	EnableTfa() gin.HandlerFunc
@@ -123,21 +126,66 @@ func (h handler) UpdateIdentifier() gin.HandlerFunc {
 	}
 }
 
-func (h handler) BindOAuth() gin.HandlerFunc {
+func (h handler) Reauth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			SafeCode   string   `json:"safe_code" binding:"required"`
-			Identifier string   `json:"identifier" binding:"required"`
-			Password   string   `json:"password"`
-			TotpCode   string   `json:"totp_code"`
-			SyncFields []string `json:"sync_fields"`
+			Identifier string `json:"identifier" binding:"required"`
+			Password   string `json:"password" binding:"required"`
+			TotpCode   string `json:"totp_code"`
+		}
+
+		var err error
+		var ticket string
+		errCode := e.InvalidParams
+
+		if err = c.ShouldBind(&req); err == nil {
+			ticket, errCode, err = h.service.Reauth(h.Context(c), req.Identifier, req.Password, req.TotpCode)
+		}
+
+		h.I18n.JSON(c, errCode, gin.H{"reauth_ticket": ticket}, err)
+	}
+}
+
+func (h handler) ConfirmOAuthBind() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			BindTicket   string   `json:"bind_ticket" binding:"required"`
+			ReauthTicket string   `json:"reauth_ticket" binding:"required"`
+			SyncFields   []string `json:"sync_fields"`
 		}
 
 		var err error
 		errCode := e.InvalidParams
 
 		if err = c.ShouldBind(&req); err == nil {
-			errCode, err = h.service.BindOAuth(h.Context(c), req.SafeCode, req.Identifier, req.Password, req.TotpCode, req.SyncFields)
+			errCode, err = h.service.ConfirmOAuthBind(h.Context(c), req.BindTicket, req.ReauthTicket, req.SyncFields)
+		}
+
+		h.I18n.JSON(c, errCode, nil, err)
+	}
+}
+
+func (h handler) OAuthAccounts() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		accounts, errCode, err := h.service.OAuthAccounts(h.Context(c), userID.(uint))
+		h.I18n.JSON(c, errCode, gin.H{"list": accounts}, err)
+	}
+}
+
+func (h handler) UnbindOAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			IdentityID   uint   `json:"identity_id" binding:"required"`
+			ReauthTicket string `json:"reauth_ticket" binding:"required"`
+		}
+
+		var err error
+		errCode := e.InvalidParams
+
+		userID, _ := c.Get("user_id")
+		if err = c.ShouldBind(&req); err == nil {
+			errCode, err = h.service.UnbindOAuth(h.Context(c), userID.(uint), req.IdentityID, req.ReauthTicket)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)
@@ -272,7 +320,7 @@ func (h handler) Token() gin.HandlerFunc {
 			token, errCode, err = h.service.Token(h.Context(c), &params)
 			if errCode == e.NeedBindOAuth {
 				h.I18n.JSON(c, errCode, gin.H{
-					"safe_code":       token.SafeCode,
+					"bind_ticket":     token.BindTicket,
 					"oauth_profile":   token.OAuthProfile,
 					"syncable_fields": token.SyncableFields,
 				}, err)
