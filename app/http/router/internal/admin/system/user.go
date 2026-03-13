@@ -19,4 +19,7 @@ func registerUserRoutes(api *gin.RouterGroup, ctx *http.Context) {
 	api.PUT("role", handler.UpdateRole())
 	api.PUT("password/reset", handler.ResetPassword())
 	api.PUT("tfa/disable", handler.DisableTfa())
+	api.GET("passkeys", handler.Passkeys())
+	api.DELETE("passkey", handler.DeletePasskey())
+	api.DELETE("passkeys", handler.DeleteAllPasskeys())
 }

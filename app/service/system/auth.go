@@ -27,11 +27,12 @@ import (
 )
 
 const (
-	safeCodePrefix     = "admin:system:auth:safeCode:"
-	bindTicketPrefix   = "admin:system:auth:bindTicket:"
-	reauthTicketPrefix = "admin:system:auth:reauthTicket:"
-	DefaultPassword    = "Qaz123$%^"
-	oauthStateKey      = "admin:system:auth:oauth:%s"
+	safeCodePrefix         = "admin:system:auth:safeCode:"
+	bindTicketPrefix       = "admin:system:auth:bindTicket:"
+	reauthTicketPrefix     = "admin:system:auth:reauthTicket:"
+	passkeyChallengePrefix = "admin:system:auth:passkey:challenge:"
+	DefaultPassword        = "Qaz123$%^"
+	oauthStateKey          = "admin:system:auth:oauth:%s"
 
 	feishuUserAccessTokenAPI = "https://open.feishu.cn/open-apis/authen/v1/oidc/access_token"
 	feishuUserInfoAPI        = "https://open.feishu.cn/open-apis/authen/v1/user_info"
@@ -118,6 +119,12 @@ type AuthService interface {
 	DisableTfa(ctx context.Context, userID uint, totpCode string) (errCode int, err error)
 	TotpKey(ctx context.Context, userID uint) (key, qrCode string, errCode int, err error)
 	TfaStatus(ctx context.Context, userID uint) (enable bool, errCode int, err error)
+	BeginPasskeyRegistration(ctx context.Context, userID uint, displayName string) (result PasskeyOptionsResult, errCode int, err error)
+	FinishPasskeyRegistration(ctx context.Context, userID uint, challengeID string, credential PasskeyCredential) (result PasskeyItem, errCode int, err error)
+	BeginPasskeyLogin(ctx context.Context, identifier string) (result PasskeyOptionsResult, errCode int, err error)
+	FinishPasskeyLogin(ctx context.Context, challengeID string, credential PasskeyCredential) (token AccessToken, errCode int, err error)
+	ListPasskeys(ctx context.Context, userID uint) (list []PasskeyItem, errCode int, err error)
+	DeletePasskey(ctx context.Context, userID, passkeyID uint) (errCode int, err error)
 	OauthUrl(ctx context.Context, oauthType, loginType string) (errCode int, url string)
 }
 
@@ -128,6 +135,7 @@ type authService struct {
 	db                     *gorm.DB
 	userRepo               repo.UserRepo
 	identityRepo           repo.UserIdentityRepo
+	passkeyRepo            repo.UserPasskeyRepo
 	totp                   totp.Generator
 	authRepo               repo.AuthRepo
 	menuRepo               repo.MenuRepo
@@ -1373,12 +1381,19 @@ func NewAuthService(redis *redis.Manager, logger *logger.Manager, db *gorm.DB, n
 	if cfg.TokenExpireIn <= 0 {
 		cfg.TokenExpireIn = int64(config.Get().System.TokenExpire)
 	}
+	if cfg.WebAuthn.ChallengeExpireIn <= 0 {
+		cfg.WebAuthn.ChallengeExpireIn = 180
+	}
+	if strings.TrimSpace(cfg.WebAuthn.UserVerification) == "" {
+		cfg.WebAuthn.UserVerification = "preferred"
+	}
 	return &authService{
 		redis:        redis,
 		logger:       logger,
 		db:           db,
 		userRepo:     repo.NewUserRepo(db, redis, logger),
 		identityRepo: repo.NewUserIdentityRepo(db, redis, logger),
+		passkeyRepo:  repo.NewUserPasskeyRepo(db, redis, logger),
 		totp:         totp.NewGenerator("go-api-admin"),
 		authRepo:     repo.NewAuthRepo(db, redis, logger),
 		menuRepo:     repo.NewMenuRepo(db, redis, logger),

@@ -32,6 +32,13 @@ type Handler interface {
 	EnableTfa() gin.HandlerFunc
 	TotpKey() gin.HandlerFunc
 	TfaStatus() gin.HandlerFunc
+
+	BeginPasskeyRegistration() gin.HandlerFunc
+	FinishPasskeyRegistration() gin.HandlerFunc
+	BeginPasskeyLogin() gin.HandlerFunc
+	FinishPasskeyLogin() gin.HandlerFunc
+	Passkeys() gin.HandlerFunc
+	DeletePasskey() gin.HandlerFunc
 }
 
 type handler struct {

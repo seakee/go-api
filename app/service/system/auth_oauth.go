@@ -315,6 +315,14 @@ func (a authService) ConfirmOAuthBind(ctx context.Context, bindTicketCode, reaut
 
 // OAuthAccounts returns the third-party identities bound to the current user.
 func (a authService) OAuthAccounts(ctx context.Context, userID uint) (accounts []OAuthAccount, errCode int, err error) {
+	user, err := a.userRepo.DetailByID(ctx, userID)
+	if err != nil {
+		return nil, e.ERROR, err
+	}
+	if user == nil || user.Status != 1 {
+		return nil, e.UserNotFound, nil
+	}
+
 	identityList, err := a.identityRepo.ListByUserID(ctx, userID)
 	if err != nil {
 		return nil, e.ERROR, err
@@ -358,22 +366,9 @@ func (a authService) UnbindOAuth(ctx context.Context, userID, identityID uint, r
 		return e.OauthAccountNotBound, nil
 	}
 
-	identityList, err := a.identityRepo.ListByUserID(ctx, userID)
+	loginMethodCount, err := a.loginMethodCount(ctx, userID)
 	if err != nil {
 		return e.ERROR, err
-	}
-
-	currentUser, err := a.userRepo.DetailByID(ctx, userID)
-	if err != nil {
-		return e.ERROR, err
-	}
-	if currentUser == nil {
-		return e.UserNotFound, nil
-	}
-
-	loginMethodCount := len(identityList)
-	if strings.TrimSpace(currentUser.Password) != "" {
-		loginMethodCount++
 	}
 	if loginMethodCount <= 1 {
 		return e.LastLoginMethodCannotBeRemoved, nil

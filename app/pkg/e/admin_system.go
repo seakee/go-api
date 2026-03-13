@@ -51,6 +51,14 @@ const (
 	InvalidReauthTicket              = 11047
 	OauthAccountNotBound             = 11048
 	LastLoginMethodCannotBeRemoved   = 11049
+	PasskeyChallengeExpired          = 11050
+	InvalidPasskeyChallenge          = 11051
+	PasskeyCredentialNotFound        = 11052
+	PasskeyCredentialExists          = 11053
+	PasskeyVerificationFailed        = 11054
+	PasskeyRegistrationFailed        = 11055
+	PasskeyLoginFailed               = 11056
+	PasskeyCanNotBeNull              = 11057
 
 	// Backward-compatible aliases
 	AccountOrPasswordCanNotBeNull  = IdentifierOrPasswordCanNotBeNull

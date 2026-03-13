@@ -21,6 +21,7 @@ type UserIdentityRepo interface {
 	Create(ctx context.Context, identity *system.UserIdentity) (*system.UserIdentity, error)
 	UpdateLastLogin(ctx context.Context, id uint, loginAt time.Time) error
 	DeleteByIDAndUserID(ctx context.Context, id, userID uint) error
+	DeleteByUserID(ctx context.Context, userID uint) error
 }
 
 type userIdentityRepo struct {
@@ -114,6 +115,18 @@ func (u userIdentityRepo) DeleteByIDAndUserID(ctx context.Context, id, userID ui
 	}
 
 	return nil
+}
+
+func (u userIdentityRepo) DeleteByUserID(ctx context.Context, userID uint) error {
+	if userID == 0 {
+		return fmt.Errorf("user id is empty")
+	}
+
+	if err := clearUserCache(ctx, u.redis); err != nil && u.logger != nil {
+		u.logger.Error(ctx, "clear user cache failed", zap.String("action", "delete user identities"), zap.Error(err))
+	}
+
+	return u.db.WithContext(ctx).Unscoped().Where("user_id = ?", userID).Delete(&system.UserIdentity{}).Error
 }
 
 // NewUserIdentityRepo creates a new UserIdentityRepo instance.

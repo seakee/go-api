@@ -25,6 +25,9 @@ type Handler interface {
 	UpdateRole() gin.HandlerFunc
 	ResetPassword() gin.HandlerFunc
 	DisableTfa() gin.HandlerFunc
+	Passkeys() gin.HandlerFunc
+	DeletePasskey() gin.HandlerFunc
+	DeleteAllPasskeys() gin.HandlerFunc
 }
 
 type handler struct {
@@ -33,14 +36,15 @@ type handler struct {
 }
 
 type info struct {
-	ID          uint      `json:"id"`
-	Email       string    `json:"email"`
-	Phone       string    `json:"phone"`
-	TotpEnabled bool      `json:"totp_enabled"`
-	UserName    string    `json:"user_name"`
-	Status      int8      `json:"status"`
-	Avatar      string    `json:"avatar"`
-	CreatedAt   time.Time `json:"created_at"`
+	ID           uint      `json:"id"`
+	Email        string    `json:"email"`
+	Phone        string    `json:"phone"`
+	TotpEnabled  bool      `json:"totp_enabled"`
+	PasskeyCount int64     `json:"passkey_count"`
+	UserName     string    `json:"user_name"`
+	Status       int8      `json:"status"`
+	Avatar       string    `json:"avatar"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // params defines the user request parameters.
@@ -149,6 +153,62 @@ func (h handler) DisableTfa() gin.HandlerFunc {
 	}
 }
 
+func (h handler) Passkeys() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var err error
+		var req struct {
+			UserID uint `form:"user_id" binding:"required"`
+		}
+
+		ctx := h.Context(c)
+		errCode := e.InvalidParams
+		if err = c.ShouldBindQuery(&req); err == nil {
+			list, code, listErr := h.service.ListPasskeys(ctx, req.UserID)
+			errCode = code
+			err = listErr
+			h.I18n.JSON(c, errCode, gin.H{"list": list}, err)
+			return
+		}
+
+		h.I18n.JSON(c, errCode, nil, err)
+	}
+}
+
+func (h handler) DeletePasskey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var err error
+		var req struct {
+			UserID uint `json:"user_id" binding:"required"`
+			ID     uint `json:"id" binding:"required"`
+		}
+
+		ctx := h.Context(c)
+		errCode := e.InvalidParams
+		if err = c.ShouldBindJSON(&req); err == nil {
+			errCode, err = h.service.DeletePasskey(ctx, req.UserID, req.ID)
+		}
+
+		h.I18n.JSON(c, errCode, nil, err)
+	}
+}
+
+func (h handler) DeleteAllPasskeys() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var err error
+		var req struct {
+			UserID uint `json:"user_id" binding:"required"`
+		}
+
+		ctx := h.Context(c)
+		errCode := e.InvalidParams
+		if err = c.ShouldBindJSON(&req); err == nil {
+			errCode, err = h.service.DeleteAllPasskeys(ctx, req.UserID)
+		}
+
+		h.I18n.JSON(c, errCode, nil, err)
+	}
+}
+
 func (h handler) i() {}
 
 func (h handler) Paginate() gin.HandlerFunc {
@@ -184,17 +244,28 @@ func (h handler) Paginate() gin.HandlerFunc {
 			}
 		}
 
+		userIDs := make([]uint, 0, len(list))
+		for i := range list {
+			userIDs = append(userIDs, list[i].ID)
+		}
+		passkeyCounts, countErr := h.service.PasskeyCountByUserIDs(ctx, userIDs)
+		if countErr != nil {
+			errCode = e.ERROR
+			err = countErr
+		}
+
 		userList := make([]info, len(list))
 		for i := range list {
 			userList[i] = info{
-				ID:          list[i].ID,
-				Email:       list[i].Email,
-				Phone:       list[i].Phone,
-				TotpEnabled: list[i].TotpEnabled,
-				UserName:    list[i].UserName,
-				Status:      list[i].Status,
-				Avatar:      list[i].Avatar,
-				CreatedAt:   list[i].CreatedAt,
+				ID:           list[i].ID,
+				Email:        list[i].Email,
+				Phone:        list[i].Phone,
+				TotpEnabled:  list[i].TotpEnabled,
+				PasskeyCount: passkeyCounts[list[i].ID],
+				UserName:     list[i].UserName,
+				Status:       list[i].Status,
+				Avatar:       list[i].Avatar,
+				CreatedAt:    list[i].CreatedAt,
 			}
 		}
 
@@ -221,15 +292,21 @@ func (h handler) Detail() gin.HandlerFunc {
 		if err = c.ShouldBindQuery(&req); err == nil {
 			a, errCode, err = h.service.Detail(ctx, req.ID)
 			if err == nil {
+				passkeyCount, countErr := h.service.PasskeyCount(ctx, req.ID)
+				if countErr != nil {
+					h.I18n.JSON(c, e.ERROR, nil, countErr)
+					return
+				}
 				data = info{
-					ID:          a.ID,
-					Email:       a.Email,
-					Phone:       a.Phone,
-					TotpEnabled: a.TotpEnabled,
-					UserName:    a.UserName,
-					Status:      a.Status,
-					Avatar:      a.Avatar,
-					CreatedAt:   a.CreatedAt,
+					ID:           a.ID,
+					Email:        a.Email,
+					Phone:        a.Phone,
+					TotpEnabled:  a.TotpEnabled,
+					PasskeyCount: passkeyCount,
+					UserName:     a.UserName,
+					Status:       a.Status,
+					Avatar:       a.Avatar,
+					CreatedAt:    a.CreatedAt,
 				}
 			}
 		}

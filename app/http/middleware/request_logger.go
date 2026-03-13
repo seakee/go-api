@@ -165,7 +165,9 @@ func isSensitiveField(field string) bool {
 	case "password", "old_password", "new_password", "token", "access_token",
 		"refresh_token", "authorization", "app_secret", "secret",
 		"credentials", "safe_code", "bind_ticket", "reauth_ticket", "totp_code", "totp_key", "jwt",
-		"db_password", "client_secret", "corp_secret":
+		"db_password", "client_secret", "corp_secret", "credential_id", "attestation", "assertion",
+		"client_data_json", "authenticator_data", "public_key", "challenge_id", "attestation_object",
+		"signature", "user_handle":
 		return true
 	}
 
@@ -173,6 +175,7 @@ func isSensitiveField(field string) bool {
 		strings.Contains(key, "secret") ||
 		strings.Contains(key, "token") ||
 		strings.Contains(key, "credential") ||
+		strings.Contains(key, "challenge") ||
 		strings.Contains(key, "authorization") ||
 		strings.Contains(key, "totp")
 }
