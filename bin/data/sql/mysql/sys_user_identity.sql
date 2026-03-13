@@ -15,6 +15,5 @@ CREATE TABLE `sys_user_identity`
     `deleted_at`       timestamp                                                   DEFAULT NULL,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_sys_user_identity_provider_subject` (`provider`, `provider_tenant`, `provider_subject`),
-    KEY `idx_sys_user_identity_user_id` (`user_id`),
-    CONSTRAINT `fk_sys_user_identity_user_id` FOREIGN KEY (`user_id`) REFERENCES `sys_user` (`id`)
+    KEY `idx_sys_user_identity_user_id` (`user_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;

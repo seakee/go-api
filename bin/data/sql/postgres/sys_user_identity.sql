@@ -12,8 +12,7 @@ CREATE TABLE sys_user_identity
     last_login_at    timestamp    DEFAULT NULL,
     created_at       timestamp    DEFAULT CURRENT_TIMESTAMP,
     updated_at       timestamp    DEFAULT CURRENT_TIMESTAMP,
-    deleted_at       timestamp    DEFAULT NULL,
-    CONSTRAINT fk_sys_user_identity_user_id FOREIGN KEY (user_id) REFERENCES sys_user (id)
+    deleted_at       timestamp    DEFAULT NULL
 );
 
 CREATE UNIQUE INDEX uk_sys_user_identity_provider_subject
