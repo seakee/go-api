@@ -30,6 +30,15 @@ type AdminConfig struct {
 	JwtSecret        string              `json:"jwt_secret"`
 	Oauth            OauthConfig         `json:"oauth"`
 	AuthRateLimit    AuthRateLimitConfig `json:"auth_rate_limit"`
+	WebAuthn         WebAuthnConfig      `json:"webauthn"`
+}
+
+type WebAuthnConfig struct {
+	RPID              string   `json:"rp_id"`
+	RPDisplayName     string   `json:"rp_display_name"`
+	RPOrigins         []string `json:"rp_origins"`
+	ChallengeExpireIn int      `json:"challenge_expire_in"`
+	UserVerification  string   `json:"user_verification"`
 }
 
 type AuthRateLimitConfig struct {

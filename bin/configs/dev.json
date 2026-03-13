@@ -33,6 +33,15 @@
           "oauth_url": "https://open.weixin.qq.com/connect/oauth2/authorize",
           "proxy_url": "http://username:password@1.1.1.1:443"
         }
+      },
+      "webauthn": {
+        "rp_id": "127.0.0.1",
+        "rp_display_name": "Go API Admin",
+        "rp_origins": [
+          "http://127.0.0.1:3000"
+        ],
+        "challenge_expire_in": 180,
+        "user_verification": "preferred"
       }
     }
   },
