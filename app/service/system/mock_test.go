@@ -253,6 +253,7 @@ type mockUserIdentityRepo struct {
 	CreateFunc              func(ctx context.Context, identity *system.UserIdentity) (*system.UserIdentity, error)
 	UpdateLastLoginFunc     func(ctx context.Context, id uint, loginAt time.Time) error
 	DeleteByIDAndUserIDFunc func(ctx context.Context, id, userID uint) error
+	DeleteByUserIDFunc      func(ctx context.Context, userID uint) error
 }
 
 func (m *mockUserIdentityRepo) DetailByProvider(ctx context.Context, provider, tenant, subject string) (*system.UserIdentity, error) {
@@ -293,6 +294,104 @@ func (m *mockUserIdentityRepo) UpdateLastLogin(ctx context.Context, id uint, log
 func (m *mockUserIdentityRepo) DeleteByIDAndUserID(ctx context.Context, id, userID uint) error {
 	if m.DeleteByIDAndUserIDFunc != nil {
 		return m.DeleteByIDAndUserIDFunc(ctx, id, userID)
+	}
+	return nil
+}
+
+func (m *mockUserIdentityRepo) DeleteByUserID(ctx context.Context, userID uint) error {
+	if m.DeleteByUserIDFunc != nil {
+		return m.DeleteByUserIDFunc(ctx, userID)
+	}
+	return nil
+}
+
+type mockUserPasskeyRepo struct {
+	DetailByCredentialIDFunc func(ctx context.Context, credentialID string) (*system.UserPasskey, error)
+	DetailByIDAndUserIDFunc  func(ctx context.Context, id, userID uint) (*system.UserPasskey, error)
+	ListByUserIDFunc         func(ctx context.Context, userID uint) ([]system.UserPasskey, error)
+	CountByUserIDFunc        func(ctx context.Context, userID uint) (int64, error)
+	CountByUserIDsFunc       func(ctx context.Context, userIDs []uint) (map[uint]int64, error)
+	CreateFunc               func(ctx context.Context, passkey *system.UserPasskey) (*system.UserPasskey, error)
+	UpdateSignCountFunc      func(ctx context.Context, id uint, signCount uint32) error
+	UpdateLastUsedAtFunc     func(ctx context.Context, id uint, usedAt time.Time) error
+	DeleteByIDAndUserIDFunc  func(ctx context.Context, id, userID uint) error
+	DeleteByIDFunc           func(ctx context.Context, id uint) error
+	DeleteByUserIDFunc       func(ctx context.Context, userID uint) error
+}
+
+func (m *mockUserPasskeyRepo) DetailByCredentialID(ctx context.Context, credentialID string) (*system.UserPasskey, error) {
+	if m.DetailByCredentialIDFunc != nil {
+		return m.DetailByCredentialIDFunc(ctx, credentialID)
+	}
+	return nil, nil
+}
+
+func (m *mockUserPasskeyRepo) DetailByIDAndUserID(ctx context.Context, id, userID uint) (*system.UserPasskey, error) {
+	if m.DetailByIDAndUserIDFunc != nil {
+		return m.DetailByIDAndUserIDFunc(ctx, id, userID)
+	}
+	return nil, nil
+}
+
+func (m *mockUserPasskeyRepo) ListByUserID(ctx context.Context, userID uint) ([]system.UserPasskey, error) {
+	if m.ListByUserIDFunc != nil {
+		return m.ListByUserIDFunc(ctx, userID)
+	}
+	return nil, nil
+}
+
+func (m *mockUserPasskeyRepo) CountByUserID(ctx context.Context, userID uint) (int64, error) {
+	if m.CountByUserIDFunc != nil {
+		return m.CountByUserIDFunc(ctx, userID)
+	}
+	return 0, nil
+}
+
+func (m *mockUserPasskeyRepo) CountByUserIDs(ctx context.Context, userIDs []uint) (map[uint]int64, error) {
+	if m.CountByUserIDsFunc != nil {
+		return m.CountByUserIDsFunc(ctx, userIDs)
+	}
+	return map[uint]int64{}, nil
+}
+
+func (m *mockUserPasskeyRepo) Create(ctx context.Context, passkey *system.UserPasskey) (*system.UserPasskey, error) {
+	if m.CreateFunc != nil {
+		return m.CreateFunc(ctx, passkey)
+	}
+	return passkey, nil
+}
+
+func (m *mockUserPasskeyRepo) UpdateSignCount(ctx context.Context, id uint, signCount uint32) error {
+	if m.UpdateSignCountFunc != nil {
+		return m.UpdateSignCountFunc(ctx, id, signCount)
+	}
+	return nil
+}
+
+func (m *mockUserPasskeyRepo) UpdateLastUsedAt(ctx context.Context, id uint, usedAt time.Time) error {
+	if m.UpdateLastUsedAtFunc != nil {
+		return m.UpdateLastUsedAtFunc(ctx, id, usedAt)
+	}
+	return nil
+}
+
+func (m *mockUserPasskeyRepo) DeleteByIDAndUserID(ctx context.Context, id, userID uint) error {
+	if m.DeleteByIDAndUserIDFunc != nil {
+		return m.DeleteByIDAndUserIDFunc(ctx, id, userID)
+	}
+	return nil
+}
+
+func (m *mockUserPasskeyRepo) DeleteByID(ctx context.Context, id uint) error {
+	if m.DeleteByIDFunc != nil {
+		return m.DeleteByIDFunc(ctx, id)
+	}
+	return nil
+}
+
+func (m *mockUserPasskeyRepo) DeleteByUserID(ctx context.Context, userID uint) error {
+	if m.DeleteByUserIDFunc != nil {
+		return m.DeleteByUserIDFunc(ctx, userID)
 	}
 	return nil
 }

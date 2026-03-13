@@ -193,6 +193,18 @@ func TestAuthService_UnbindOAuth(t *testing.T) {
 			wantConsume:     true,
 		},
 		{
+			name:           "unbind succeeds when another oauth identity remains",
+			user:           &systemModel.User{Model: gorm.Model{ID: 7}, Status: 1},
+			targetIdentity: &systemModel.UserIdentity{Model: gorm.Model{ID: 12}, UserID: 7, Provider: "feishu", ProviderTenant: "tenant-a"},
+			identityList: []systemModel.UserIdentity{
+				{Model: gorm.Model{ID: 12}, UserID: 7, Provider: "feishu", ProviderTenant: "tenant-a"},
+				{Model: gorm.Model{ID: 13}, UserID: 7, Provider: "wechat", ProviderTenant: "corp-a"},
+			},
+			wantErrCode:     e.SUCCESS,
+			wantDeleteCalls: 1,
+			wantConsume:     true,
+		},
+		{
 			name:           "identity not bound returns explicit error",
 			user:           &systemModel.User{Model: gorm.Model{ID: 7}, Status: 1, Password: "hashed"},
 			targetIdentity: nil,
@@ -280,6 +292,39 @@ func TestAuthService_UnbindOAuth(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAuthService_OAuthAccounts(t *testing.T) {
+	t.Run("returns user not found when parent user is missing", func(t *testing.T) {
+		listCalled := false
+		svc := &authService{
+			userRepo: &mockUserRepo{
+				DetailByIDFunc: func(ctx context.Context, id uint) (*systemModel.User, error) {
+					return nil, nil
+				},
+			},
+			identityRepo: &mockUserIdentityRepo{
+				ListByUserIDFunc: func(ctx context.Context, userID uint) ([]systemModel.UserIdentity, error) {
+					listCalled = true
+					return nil, nil
+				},
+			},
+		}
+
+		accounts, errCode, err := svc.OAuthAccounts(context.Background(), 7)
+		if err != nil {
+			t.Fatalf("OAuthAccounts() error = %v, want nil", err)
+		}
+		if errCode != e.UserNotFound {
+			t.Fatalf("OAuthAccounts() errCode = %d, want %d", errCode, e.UserNotFound)
+		}
+		if accounts != nil {
+			t.Fatalf("OAuthAccounts() accounts = %+v, want nil", accounts)
+		}
+		if listCalled {
+			t.Fatalf("OAuthAccounts() should not call ListByUserID() when user is missing")
+		}
+	})
 }
 
 func TestAuthService_ConfirmOAuthBind(t *testing.T) {

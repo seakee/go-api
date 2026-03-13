@@ -8,6 +8,10 @@ func TestIsSensitiveField_ExtendedKeys(t *testing.T) {
 		"totp_key",
 		"client_secret",
 		"db_password",
+		"credential_id",
+		"client_data_json",
+		"authenticator_data",
+		"challenge_id",
 	}
 
 	for _, field := range sensitiveFields {

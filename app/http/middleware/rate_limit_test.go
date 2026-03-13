@@ -112,6 +112,42 @@ func TestAdminAuthRateLimit_ThrottleAfterLimit(t *testing.T) {
 	}
 }
 
+func TestAdminAuthRateLimit_PasskeyLoginPath(t *testing.T) {
+	loadRateLimitTestConfig(t, true)
+
+	originalEval := adminAuthRateLimitEval
+	t.Cleanup(func() {
+		adminAuthRateLimitEval = originalEval
+	})
+
+	receivedKey := ""
+	adminAuthRateLimitEval = func(ctx context.Context, manager *redis.Manager, key string, window int) (int64, error) {
+		receivedKey = key
+		return 1, nil
+	}
+
+	manager := &redis.Manager{}
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(middleware{redis: map[string]*redis.Manager{"go-api": manager}}.AdminAuthRateLimit())
+	r.POST("/go-api/internal/admin/auth/passkey/login/options", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/go-api/internal/admin/auth/passkey/login/options", nil)
+	req.RemoteAddr = "192.0.2.10:12345"
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+	if receivedKey != "admin:auth:rate-limit:/go-api/internal/admin/auth/passkey/login/options:192.0.2.10" {
+		t.Fatalf("receivedKey = %s, want %s", receivedKey, "admin:auth:rate-limit:/go-api/internal/admin/auth/passkey/login/options:192.0.2.10")
+	}
+}
+
 func loadRateLimitTestConfig(t *testing.T, enabled bool) {
 	t.Helper()
 

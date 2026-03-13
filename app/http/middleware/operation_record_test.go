@@ -13,7 +13,10 @@ func TestShouldOmitOperationPayload(t *testing.T) {
 	}{
 		{path: "/go-api/internal/admin/auth/token", want: true},
 		{path: "/go-api/internal/admin/auth/password/reset", want: true},
+		{path: "/go-api/internal/admin/auth/passkey/register/finish", want: true},
+		{path: "/go-api/internal/admin/auth/passkey/login/finish", want: true},
 		{path: "/go-api/internal/admin/system/user/password/reset", want: true},
+		{path: "/go-api/internal/admin/system/user/passkey", want: true},
 		{path: "/go-api/internal/admin/system/user/paginate", want: false},
 	}
 

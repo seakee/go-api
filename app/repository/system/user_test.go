@@ -151,3 +151,52 @@ func TestUserIdentityRepo_DeleteByIDAndUserID_HardDeleteAllowsRebind(t *testing.
 		t.Fatalf("Unscoped identity count = %d, want 1", deletedCount)
 	}
 }
+
+func TestUserIdentityRepo_DeleteByUserID(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("gorm.Open() error = %v", err)
+	}
+
+	if err := db.AutoMigrate(&model.User{}, &model.UserIdentity{}); err != nil {
+		t.Fatalf("AutoMigrate() error = %v", err)
+	}
+
+	users := []model.User{
+		{Model: gorm.Model{ID: 1}, UserName: "u1"},
+		{Model: gorm.Model{ID: 2}, UserName: "u2"},
+	}
+	if err := db.Create(&users).Error; err != nil {
+		t.Fatalf("Create users error = %v", err)
+	}
+
+	identities := []model.UserIdentity{
+		{UserID: 1, Provider: "feishu", ProviderTenant: "tenant-a", ProviderSubject: "subject-a"},
+		{UserID: 1, Provider: "wechat", ProviderTenant: "corp-a", ProviderSubject: "subject-b"},
+		{UserID: 2, Provider: "feishu", ProviderTenant: "tenant-a", ProviderSubject: "subject-c"},
+	}
+	if err := db.Create(&identities).Error; err != nil {
+		t.Fatalf("Create identities error = %v", err)
+	}
+
+	identityRepo := NewUserIdentityRepo(db, nil, nil)
+	if err := identityRepo.DeleteByUserID(context.Background(), 1); err != nil {
+		t.Fatalf("DeleteByUserID() error = %v", err)
+	}
+
+	var user1Count int64
+	if err := db.Unscoped().Model(&model.UserIdentity{}).Where("user_id = ?", 1).Count(&user1Count).Error; err != nil {
+		t.Fatalf("count user1 identities error = %v", err)
+	}
+	if user1Count != 0 {
+		t.Fatalf("user1 identity count = %d, want 0", user1Count)
+	}
+
+	var user2Count int64
+	if err := db.Unscoped().Model(&model.UserIdentity{}).Where("user_id = ?", 2).Count(&user2Count).Error; err != nil {
+		t.Fatalf("count user2 identities error = %v", err)
+	}
+	if user2Count != 1 {
+		t.Fatalf("user2 identity count = %d, want 1", user2Count)
+	}
+}
