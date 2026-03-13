@@ -143,6 +143,9 @@ System management APIs are mounted at `/go-api/internal/admin/system`.
 | User | PUT | `/go-api/internal/admin/system/user/role` | Update user roles (keeps `base` role) |
 | User | PUT | `/go-api/internal/admin/system/user/password/reset` | Admin reset password |
 | User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | Admin disable TFA |
+| User | GET | `/go-api/internal/admin/system/user/passkeys` | Admin list user passkeys |
+| User | DELETE | `/go-api/internal/admin/system/user/passkey` | Admin delete a user passkey |
+| User | DELETE | `/go-api/internal/admin/system/user/passkeys` | Admin delete all user passkeys |
 | Record | GET | `/go-api/internal/admin/system/record/paginate` | Operation record pagination |
 | Record | GET | `/go-api/internal/admin/system/record/detail` | Operation record detail |
 
@@ -152,8 +155,10 @@ System management APIs are mounted at `/go-api/internal/admin/system`.
 ```json
 {
   "id": 1,
-  "account": "admin",
+  "email": "admin@example.com",
+  "phone": "+8613800000000",
   "totp_enabled": false,
+  "passkey_count": 2,
   "user_name": "Administrator",
   "status": 1,
   "avatar": "",
@@ -161,7 +166,7 @@ System management APIs are mounted at `/go-api/internal/admin/system`.
 }
 ```
 
-Note: third-party account bindings are stored in the dedicated `sys_user_identity` table. The `User` model only keeps platform-owned profile fields.
+Note: third-party account bindings are stored in `sys_user_identity`, passkey credentials are stored in `sys_user_passkey`, and `passkey_count` summarizes the number of registered passkeys for the user.
 
 `Role` list item (`/role/list`):
 ```json
@@ -668,6 +673,9 @@ Content-Type: application/json
 | User | PUT | `/go-api/internal/admin/system/user/role` | 更新用户角色（会保留 `base` 角色） |
 | User | PUT | `/go-api/internal/admin/system/user/password/reset` | 管理员重置密码 |
 | User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | 管理员关闭 TFA |
+| User | GET | `/go-api/internal/admin/system/user/passkeys` | 查询用户 Passkey |
+| User | DELETE | `/go-api/internal/admin/system/user/passkey` | 删除单个用户 Passkey |
+| User | DELETE | `/go-api/internal/admin/system/user/passkeys` | 删除用户全部 Passkey |
 | Record | GET | `/go-api/internal/admin/system/record/paginate` | 操作记录分页 |
 | Record | GET | `/go-api/internal/admin/system/record/detail` | 操作记录详情 |
 
@@ -677,8 +685,10 @@ Content-Type: application/json
 ```json
 {
   "id": 1,
-  "account": "admin",
+  "email": "admin@example.com",
+  "phone": "+8613800000000",
   "totp_enabled": false,
+  "passkey_count": 2,
   "user_name": "管理员",
   "status": 1,
   "avatar": "",
@@ -686,7 +696,7 @@ Content-Type: application/json
 }
 ```
 
-说明：第三方账号绑定已迁移到独立的 `sys_user_identity` 表中，`User` 仅保留平台自身资料字段。
+说明：第三方账号绑定已迁移到独立的 `sys_user_identity` 表中，Passkey 凭证存放在 `sys_user_passkey` 表中，`passkey_count` 表示当前用户已注册的 Passkey 数量。
 
 `Role` 列表项（`/role/list`）：
 ```json

@@ -54,6 +54,8 @@
 | 11032 | 密码不能为空 | 重置或更新密码时为空 |
 | 11037 | 用户不可操作 | 尝试操作受保护的用户 |
 | 11038 | 角色不可操作 | 尝试操作受保护的角色 |
+| 11049 | 至少保留一种登录方式 | 删除 OAuth/Passkey 后不能让账号失去全部登录方式 |
+| 11052 | Passkey 不存在 | 指定 Passkey 记录不存在 |
 
 ---
 
@@ -96,6 +98,9 @@
 | 更新用户角色 | PUT | `/go-api/internal/admin/system/user/role` |
 | 管理员重置用户密码 | PUT | `/go-api/internal/admin/system/user/password/reset` |
 | 管理员关闭用户 TFA | PUT | `/go-api/internal/admin/system/user/tfa/disable` |
+| 查询用户 Passkey | GET | `/go-api/internal/admin/system/user/passkeys` |
+| 删除单个用户 Passkey | DELETE | `/go-api/internal/admin/system/user/passkey` |
+| 删除用户全部 Passkey | DELETE | `/go-api/internal/admin/system/user/passkeys` |
 
 > **密码字段口径（与 `docs/Admin-Auth.md` 一致）**：
 > `password` 建议统一传 `md5(明文密码)`；服务端将使用 bcrypt 存储该摘要。
@@ -132,6 +137,7 @@
   | list[].phone | string | 手机号 |
   | list[].user_name | string | 用户名 |
   | list[].totp_enabled | bool | 是否启用 TOTP |
+  | list[].passkey_count | int64 | 当前用户已注册 Passkey 数量 |
   | list[].status | int8 | 状态：0 禁用、1 正常 |
   | list[].avatar | string | 头像 URL |
   | list[].created_at | string | 创建时间 |
@@ -150,6 +156,7 @@
           "phone": "+8613800000000",
           "user_name": "管理员",
           "totp_enabled": false,
+          "passkey_count": 2,
           "status": 1,
           "avatar": "https://cdn.example/avatar/1.png",
           "created_at": "2024-01-15T10:30:00+08:00"
@@ -250,6 +257,9 @@
 
 - **成功返回**：`code=0`
 - **错误码**：`400`、`500`、`11037`
+
+- **说明**：
+  - 删除用户时会在事务内同步清理 `sys_user_passkey`、`sys_user_identity`、`sys_role_user` 关联数据。
 
 ---
 
@@ -361,10 +371,107 @@
 
 ---
 
+### 10. 查询用户 Passkey
+- **Method**：GET
+- **Path**：`/go-api/internal/admin/system/user/passkeys`
+- **Query 参数**：
+
+  | 名称 | 类型 | 必填 | 说明 |
+  | ---- | ---- | ---- | ---- |
+  | user_id | uint | 是 | 用户 ID |
+
+- **响应结构**：
+
+  | 字段 | 类型 | 说明 |
+  | ---- | ---- | ---- |
+  | list | array | Passkey 列表 |
+  | list[].id | uint | Passkey 主键 |
+  | list[].display_name | string | 设备展示名 |
+  | list[].aaguid | string | Authenticator AAGUID，可能为空 |
+  | list[].transports | []string | 浏览器上报的传输方式 |
+  | list[].last_used_at | string/null | 最近一次使用时间 |
+  | list[].created_at | string | 创建时间 |
+
+- **响应示例**：
+  ```json
+  {
+    "code": 0,
+    "msg": "OK",
+    "data": {
+      "list": [
+        {
+          "id": 11,
+          "display_name": "MacBook Pro",
+          "aaguid": "00000000000000000000000000000000",
+          "transports": ["internal", "hybrid"],
+          "last_used_at": "2026-02-06T12:00:00+08:00",
+          "created_at": "2026-02-01T09:00:00+08:00"
+        }
+      ]
+    }
+  }
+  ```
+
+- **错误码**：`400`、`11002`、`500`
+
+---
+
+### 11. 删除单个用户 Passkey
+- **Method**：DELETE
+- **Path**：`/go-api/internal/admin/system/user/passkey`
+- **Body（JSON）**：
+  ```json
+  {
+    "user_id": 1,
+    "id": 11
+  }
+  ```
+
+- **字段说明**：
+
+  | 字段 | 类型 | 必填 | 说明 |
+  | ---- | ---- | ---- | ---- |
+  | user_id | uint | 是 | 用户 ID |
+  | id | uint | 是 | Passkey 主键 |
+
+- **行为说明**：
+  - 服务端按 `user_id + id` 精确删除指定 Passkey。
+  - 若目标用户是受保护的 `super_admin`，返回 `11037`。
+  - 若删除后账号将不再保留任何可用登录方式，返回 `11049`。
+
+- **错误码**：`400`、`11037`、`11049`、`11052`、`500`
+
+---
+
+### 12. 删除用户全部 Passkey
+- **Method**：DELETE
+- **Path**：`/go-api/internal/admin/system/user/passkeys`
+- **Body（JSON）**：
+  ```json
+  {
+    "user_id": 1
+  }
+  ```
+
+- **字段说明**：
+
+  | 字段 | 类型 | 必填 | 说明 |
+  | ---- | ---- | ---- | ---- |
+  | user_id | uint | 是 | 用户 ID |
+
+- **行为说明**：
+  - 若用户当前没有 Passkey，接口直接返回成功。
+  - 若目标用户是受保护的 `super_admin`，返回 `11037`。
+  - 若删除全部 Passkey 会导致账号失去全部登录方式，返回 `11049`。
+
+- **错误码**：`400`、`11037`、`11049`、`500`
+
+---
+
 ### 备注
-- 这两个接口属于“系统管理”范畴，与 Admin-Auth.md 的“当前用户自助”接口区分开。
+- 关闭用户 TFA、Passkey 运维这几类接口都属于“系统管理”范畴，与 `docs/Admin-Auth.md` 中“当前用户自助”接口区分开。
 - UI 中 user:password / user:update 权限建议对应后端鉴权。
-- 删除用户会同步删除该用户在 `sys_role_user` 中的角色绑定关系。
+- 删除用户会同步删除该用户在 `sys_role_user`、`sys_user_identity`、`sys_user_passkey` 中的关联数据。
 
 ---
 

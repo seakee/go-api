@@ -130,6 +130,9 @@ Content-Type: application/json
 | User | PUT | `/go-api/internal/admin/system/user/role` | 更新用户角色（会保留 `base` 角色） |
 | User | PUT | `/go-api/internal/admin/system/user/password/reset` | 管理员重置密码 |
 | User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | 管理员关闭 TFA |
+| User | GET | `/go-api/internal/admin/system/user/passkeys` | 查询用户 Passkey |
+| User | DELETE | `/go-api/internal/admin/system/user/passkey` | 删除单个用户 Passkey |
+| User | DELETE | `/go-api/internal/admin/system/user/passkeys` | 删除用户全部 Passkey |
 | Record | GET | `/go-api/internal/admin/system/record/paginate` | 操作记录分页 |
 | Record | GET | `/go-api/internal/admin/system/record/detail` | 操作记录详情 |
 
@@ -139,8 +142,10 @@ Content-Type: application/json
 ```json
 {
   "id": 1,
-  "account": "admin",
+  "email": "admin@example.com",
+  "phone": "+8613800000000",
   "totp_enabled": false,
+  "passkey_count": 2,
   "user_name": "管理员",
   "status": 1,
   "avatar": "",
@@ -148,7 +153,7 @@ Content-Type: application/json
 }
 ```
 
-说明：第三方账号绑定已迁移到独立的 `sys_user_identity` 表中，`User` 仅保留平台自身资料字段。
+说明：第三方账号绑定已迁移到独立的 `sys_user_identity` 表中，Passkey 凭证存放在 `sys_user_passkey` 表中，`passkey_count` 表示当前用户已注册的 Passkey 数量。
 
 `Role` 列表项（`/role/list`）：
 ```json
