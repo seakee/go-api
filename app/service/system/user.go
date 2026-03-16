@@ -3,13 +3,13 @@ package system
 import (
 	"context"
 	"errors"
+
 	"github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/pkg/e"
 	pwd "github.com/seakee/go-api/app/pkg/password"
 	repo "github.com/seakee/go-api/app/repository/system"
 	"github.com/sk-pkg/logger"
 	"github.com/sk-pkg/redis"
-	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -23,26 +23,24 @@ type UserService interface {
 	PasskeyCount(ctx context.Context, userID uint) (count int64, err error)
 	PasskeyCountByUserIDs(ctx context.Context, userIDs []uint) (result map[uint]int64, err error)
 	ListPasskeys(ctx context.Context, userID uint) (list []PasskeyItem, errCode int, err error)
-	DeletePasskey(ctx context.Context, operatorUserID, userID, passkeyID uint, reauthTicket string) (errCode int, err error)
-	DeleteAllPasskeys(ctx context.Context, operatorUserID, userID uint, reauthTicket string) (errCode int, err error)
+	DeletePasskey(ctx context.Context, userID, passkeyID uint) (errCode int, err error)
+	DeleteAllPasskeys(ctx context.Context, userID uint) (errCode int, err error)
 
 	Roles(ctx context.Context, userID uint) ([]uint, error)
 	UpdateRole(ctx context.Context, userID uint, roles []uint) (errCode int, err error)
-	ResetPassword(ctx context.Context, operatorUserID, userID uint, reauthTicket, password string) (errCode int, err error)
-	DisableTfa(ctx context.Context, operatorUserID, userID uint, reauthTicket string) (errCode int, err error)
+	ResetPassword(ctx context.Context, userID uint, password string) (errCode int, err error)
+	DisableTfa(ctx context.Context, userID uint) (errCode int, err error)
 }
 
 type userService struct {
-	redis                 *redis.Manager
-	logger                *logger.Manager
-	db                    *gorm.DB
-	userRepo              repo.UserRepo
-	identityRepo          repo.UserIdentityRepo
-	passkeyRepo           repo.UserPasskeyRepo
-	roleUserRepo          repo.RoleUserRepo
-	authRepo              repo.AuthRepo
-	parseReauthTicketFn   func(ctx context.Context, code string) (*reauthTicket, error)
-	consumeReauthTicketFn func(ctx context.Context, code string) error
+	redis        *redis.Manager
+	logger       *logger.Manager
+	db           *gorm.DB
+	userRepo     repo.UserRepo
+	identityRepo repo.UserIdentityRepo
+	passkeyRepo  repo.UserPasskeyRepo
+	roleUserRepo repo.RoleUserRepo
+	authRepo     repo.AuthRepo
 }
 
 func (s userService) Roles(ctx context.Context, userID uint) ([]uint, error) {
@@ -83,12 +81,9 @@ func (s userService) ListPasskeys(ctx context.Context, userID uint) (list []Pass
 	return list, e.SUCCESS, nil
 }
 
-func (s userService) DeletePasskey(ctx context.Context, operatorUserID, userID, passkeyID uint, reauthTicket string) (errCode int, err error) {
+func (s userService) DeletePasskey(ctx context.Context, userID, passkeyID uint) (errCode int, err error) {
 	if userID == 0 || passkeyID == 0 {
 		return e.InvalidParams, nil
-	}
-	if _, errCode, err = s.validateReauthTicket(ctx, reauthTicket, operatorUserID); errCode != e.SUCCESS {
-		return errCode, err
 	}
 
 	hasRole, _ := s.authRepo.HasRole(ctx, userID, "super_admin")
@@ -119,19 +114,12 @@ func (s userService) DeletePasskey(ctx context.Context, operatorUserID, userID, 
 		return e.ERROR, err
 	}
 
-	if err = s.consumeReauthTicket(ctx, reauthTicket); err != nil && s.logger != nil {
-		s.logger.Error(ctx, "failed to consume reauth ticket after deleting managed passkey", zap.Error(err))
-	}
-
 	return e.SUCCESS, nil
 }
 
-func (s userService) DeleteAllPasskeys(ctx context.Context, operatorUserID, userID uint, reauthTicket string) (errCode int, err error) {
+func (s userService) DeleteAllPasskeys(ctx context.Context, userID uint) (errCode int, err error) {
 	if userID == 0 {
 		return e.InvalidParams, nil
-	}
-	if _, errCode, err = s.validateReauthTicket(ctx, reauthTicket, operatorUserID); errCode != e.SUCCESS {
-		return errCode, err
 	}
 
 	hasRole, _ := s.authRepo.HasRole(ctx, userID, "super_admin")
@@ -159,10 +147,6 @@ func (s userService) DeleteAllPasskeys(ctx context.Context, operatorUserID, user
 		return e.ERROR, err
 	}
 
-	if err = s.consumeReauthTicket(ctx, reauthTicket); err != nil && s.logger != nil {
-		s.logger.Error(ctx, "failed to consume reauth ticket after deleting all managed passkeys", zap.Error(err))
-	}
-
 	return e.SUCCESS, nil
 }
 
@@ -184,12 +168,9 @@ func (s userService) UpdateRole(ctx context.Context, userID uint, roles []uint) 
 	return e.SUCCESS, nil
 }
 
-func (s userService) ResetPassword(ctx context.Context, operatorUserID, userID uint, reauthTicket, password string) (errCode int, err error) {
+func (s userService) ResetPassword(ctx context.Context, userID uint, password string) (errCode int, err error) {
 	if password == "" {
 		return e.PasswordCanNotBeNull, nil
-	}
-	if _, errCode, err = s.validateReauthTicket(ctx, reauthTicket, operatorUserID); errCode != e.SUCCESS {
-		return errCode, err
 	}
 
 	hasRole, _ := s.authRepo.HasRole(ctx, userID, "super_admin")
@@ -208,18 +189,10 @@ func (s userService) ResetPassword(ctx context.Context, operatorUserID, userID u
 		return e.ERROR, err
 	}
 
-	if err = s.consumeReauthTicket(ctx, reauthTicket); err != nil && s.logger != nil {
-		s.logger.Error(ctx, "failed to consume reauth ticket after resetting managed password", zap.Error(err))
-	}
-
 	return e.SUCCESS, nil
 }
 
-func (s userService) DisableTfa(ctx context.Context, operatorUserID, userID uint, reauthTicket string) (errCode int, err error) {
-	if _, errCode, err = s.validateReauthTicket(ctx, reauthTicket, operatorUserID); errCode != e.SUCCESS {
-		return errCode, err
-	}
-
+func (s userService) DisableTfa(ctx context.Context, userID uint) (errCode int, err error) {
 	hasRole, _ := s.authRepo.HasRole(ctx, userID, "super_admin")
 	if hasRole {
 		return e.UserCanNotBeOperated, errors.New("this user is a super admin, cannot be operated")
@@ -234,10 +207,6 @@ func (s userService) DisableTfa(ctx context.Context, operatorUserID, userID uint
 	err = s.userRepo.UpdateTotpStatus(ctx, &system.User{Model: gorm.Model{ID: userID}, TotpEnabled: false})
 	if err != nil {
 		return e.ERROR, err
-	}
-
-	if err = s.consumeReauthTicket(ctx, reauthTicket); err != nil && s.logger != nil {
-		s.logger.Error(ctx, "failed to consume reauth ticket after disabling managed tfa", zap.Error(err))
 	}
 
 	return e.SUCCESS, nil

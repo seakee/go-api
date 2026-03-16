@@ -257,7 +257,7 @@ func TestUserService_DeletePasskey(t *testing.T) {
 	t.Run("rejects invalid params", func(t *testing.T) {
 		svc := &userService{}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 0, 1, "reauth-code")
+		errCode, err := svc.DeletePasskey(context.Background(), 0, 1)
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v, want nil", err)
 		}
@@ -266,23 +266,8 @@ func TestUserService_DeletePasskey(t *testing.T) {
 		}
 	})
 
-	t.Run("missing reauth ticket is rejected", func(t *testing.T) {
-		svc := &userService{}
-
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 1, 2, "")
-		if err != nil {
-			t.Fatalf("DeletePasskey() error = %v, want nil", err)
-		}
-		if errCode != e.ReauthTicketCanNotBeNull {
-			t.Fatalf("DeletePasskey() errCode = %d, want %d", errCode, e.ReauthTicketCanNotBeNull)
-		}
-	})
-
 	t.Run("rejects super admin operation", func(t *testing.T) {
 		svc := &userService{
-			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
-				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
-			},
 			authRepo: &mockAuthRepo{
 				HasRoleFunc: func(ctx context.Context, userID uint, role string) (bool, error) {
 					return true, nil
@@ -290,7 +275,7 @@ func TestUserService_DeletePasskey(t *testing.T) {
 			},
 		}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 1, 2, "reauth-code")
+		errCode, err := svc.DeletePasskey(context.Background(), 1, 2)
 		if err == nil {
 			t.Fatalf("DeletePasskey() error = nil, want non-nil")
 		}
@@ -301,9 +286,6 @@ func TestUserService_DeletePasskey(t *testing.T) {
 
 	t.Run("returns not found when passkey missing", func(t *testing.T) {
 		svc := &userService{
-			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
-				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
-			},
 			authRepo: &mockAuthRepo{
 				HasRoleFunc: func(ctx context.Context, userID uint, role string) (bool, error) {
 					return false, nil
@@ -316,7 +298,7 @@ func TestUserService_DeletePasskey(t *testing.T) {
 			},
 		}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 1, 2, "reauth-code")
+		errCode, err := svc.DeletePasskey(context.Background(), 1, 2)
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v, want nil", err)
 		}
@@ -327,15 +309,7 @@ func TestUserService_DeletePasskey(t *testing.T) {
 
 	t.Run("rejects removing last login method", func(t *testing.T) {
 		deleteCalled := false
-		consumed := false
 		svc := &userService{
-			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
-				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
-			},
-			consumeReauthTicketFn: func(ctx context.Context, code string) error {
-				consumed = true
-				return nil
-			},
 			authRepo: &mockAuthRepo{
 				HasRoleFunc: func(ctx context.Context, userID uint, role string) (bool, error) {
 					return false, nil
@@ -360,7 +334,7 @@ func TestUserService_DeletePasskey(t *testing.T) {
 			},
 		}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 1, 2, "reauth-code")
+		errCode, err := svc.DeletePasskey(context.Background(), 1, 2)
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v, want nil", err)
 		}
@@ -370,22 +344,11 @@ func TestUserService_DeletePasskey(t *testing.T) {
 		if deleteCalled {
 			t.Fatalf("DeletePasskey() should not call delete")
 		}
-		if consumed {
-			t.Fatalf("DeletePasskey() should not consume ticket on failure")
-		}
 	})
 
 	t.Run("deletes passkey when other method exists", func(t *testing.T) {
 		deleteCalled := false
-		consumed := false
 		svc := &userService{
-			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
-				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
-			},
-			consumeReauthTicketFn: func(ctx context.Context, code string) error {
-				consumed = true
-				return nil
-			},
 			authRepo: &mockAuthRepo{
 				HasRoleFunc: func(ctx context.Context, userID uint, role string) (bool, error) {
 					return false, nil
@@ -410,7 +373,7 @@ func TestUserService_DeletePasskey(t *testing.T) {
 			},
 		}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 1, 2, "reauth-code")
+		errCode, err := svc.DeletePasskey(context.Background(), 1, 2)
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v", err)
 		}
@@ -420,22 +383,11 @@ func TestUserService_DeletePasskey(t *testing.T) {
 		if !deleteCalled {
 			t.Fatalf("DeletePasskey() delete was not called")
 		}
-		if !consumed {
-			t.Fatalf("DeletePasskey() should consume ticket on success")
-		}
 	})
 
 	t.Run("deletes passkey when another passkey remains", func(t *testing.T) {
 		deleteCalled := false
-		consumed := false
 		svc := &userService{
-			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
-				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
-			},
-			consumeReauthTicketFn: func(ctx context.Context, code string) error {
-				consumed = true
-				return nil
-			},
 			authRepo: &mockAuthRepo{
 				HasRoleFunc: func(ctx context.Context, userID uint, role string) (bool, error) {
 					return false, nil
@@ -460,7 +412,7 @@ func TestUserService_DeletePasskey(t *testing.T) {
 			},
 		}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 1, 2, "reauth-code")
+		errCode, err := svc.DeletePasskey(context.Background(), 1, 2)
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v", err)
 		}
@@ -470,9 +422,6 @@ func TestUserService_DeletePasskey(t *testing.T) {
 		if !deleteCalled {
 			t.Fatalf("DeletePasskey() delete was not called")
 		}
-		if !consumed {
-			t.Fatalf("DeletePasskey() should consume ticket on success")
-		}
 	})
 }
 
@@ -480,7 +429,7 @@ func TestUserService_DeleteAllPasskeys(t *testing.T) {
 	t.Run("rejects invalid user id", func(t *testing.T) {
 		svc := &userService{}
 
-		errCode, err := svc.DeleteAllPasskeys(context.Background(), 7, 0, "reauth-code")
+		errCode, err := svc.DeleteAllPasskeys(context.Background(), 0)
 		if err != nil {
 			t.Fatalf("DeleteAllPasskeys() error = %v, want nil", err)
 		}
@@ -489,24 +438,9 @@ func TestUserService_DeleteAllPasskeys(t *testing.T) {
 		}
 	})
 
-	t.Run("invalid reauth ticket is rejected", func(t *testing.T) {
-		svc := &userService{}
-
-		errCode, err := svc.DeleteAllPasskeys(context.Background(), 7, 1, "reauth-code")
-		if err != nil {
-			t.Fatalf("DeleteAllPasskeys() error = %v, want nil", err)
-		}
-		if errCode != e.InvalidReauthTicket {
-			t.Fatalf("DeleteAllPasskeys() errCode = %d, want %d", errCode, e.InvalidReauthTicket)
-		}
-	})
-
 	t.Run("returns success when user has no passkeys", func(t *testing.T) {
 		deleteCalled := false
 		svc := &userService{
-			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
-				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
-			},
 			authRepo: &mockAuthRepo{
 				HasRoleFunc: func(ctx context.Context, userID uint, role string) (bool, error) {
 					return false, nil
@@ -523,7 +457,7 @@ func TestUserService_DeleteAllPasskeys(t *testing.T) {
 			},
 		}
 
-		errCode, err := svc.DeleteAllPasskeys(context.Background(), 7, 1, "reauth-code")
+		errCode, err := svc.DeleteAllPasskeys(context.Background(), 1)
 		if err != nil {
 			t.Fatalf("DeleteAllPasskeys() error = %v", err)
 		}
@@ -537,9 +471,6 @@ func TestUserService_DeleteAllPasskeys(t *testing.T) {
 
 	t.Run("rejects removing last login method", func(t *testing.T) {
 		svc := &userService{
-			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
-				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
-			},
 			authRepo: &mockAuthRepo{
 				HasRoleFunc: func(ctx context.Context, userID uint, role string) (bool, error) {
 					return false, nil
@@ -557,7 +488,7 @@ func TestUserService_DeleteAllPasskeys(t *testing.T) {
 			},
 		}
 
-		errCode, err := svc.DeleteAllPasskeys(context.Background(), 7, 1, "reauth-code")
+		errCode, err := svc.DeleteAllPasskeys(context.Background(), 1)
 		if err != nil {
 			t.Fatalf("DeleteAllPasskeys() error = %v", err)
 		}
@@ -568,15 +499,7 @@ func TestUserService_DeleteAllPasskeys(t *testing.T) {
 
 	t.Run("deletes all passkeys when other method exists", func(t *testing.T) {
 		deleteCalled := false
-		consumed := false
 		svc := &userService{
-			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
-				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
-			},
-			consumeReauthTicketFn: func(ctx context.Context, code string) error {
-				consumed = true
-				return nil
-			},
 			authRepo: &mockAuthRepo{
 				HasRoleFunc: func(ctx context.Context, userID uint, role string) (bool, error) {
 					return false, nil
@@ -598,7 +521,7 @@ func TestUserService_DeleteAllPasskeys(t *testing.T) {
 			},
 		}
 
-		errCode, err := svc.DeleteAllPasskeys(context.Background(), 7, 1, "reauth-code")
+		errCode, err := svc.DeleteAllPasskeys(context.Background(), 1)
 		if err != nil {
 			t.Fatalf("DeleteAllPasskeys() error = %v", err)
 		}
@@ -607,9 +530,6 @@ func TestUserService_DeleteAllPasskeys(t *testing.T) {
 		}
 		if !deleteCalled {
 			t.Fatalf("DeleteAllPasskeys() delete was not called")
-		}
-		if !consumed {
-			t.Fatalf("DeleteAllPasskeys() should consume ticket on success")
 		}
 	})
 }
