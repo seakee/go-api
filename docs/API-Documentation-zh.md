@@ -128,11 +128,11 @@ Content-Type: application/json
 | User | DELETE | `/go-api/internal/admin/system/user` | 删除用户 |
 | User | GET | `/go-api/internal/admin/system/user/role` | 用户角色 ID 列表 |
 | User | PUT | `/go-api/internal/admin/system/user/role` | 更新用户角色（会保留 `base` 角色） |
-| User | PUT | `/go-api/internal/admin/system/user/password/reset` | 管理员重置密码 |
-| User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | 管理员关闭 TFA |
+| User | PUT | `/go-api/internal/admin/system/user/password/reset` | 管理员重置密码（需 `reauth_ticket`） |
+| User | PUT | `/go-api/internal/admin/system/user/tfa/disable` | 管理员关闭 TFA（需 `reauth_ticket`） |
 | User | GET | `/go-api/internal/admin/system/user/passkeys` | 查询用户 Passkey |
-| User | DELETE | `/go-api/internal/admin/system/user/passkey` | 删除单个用户 Passkey |
-| User | DELETE | `/go-api/internal/admin/system/user/passkeys` | 删除用户全部 Passkey |
+| User | DELETE | `/go-api/internal/admin/system/user/passkey` | 删除单个用户 Passkey（需 `reauth_ticket`） |
+| User | DELETE | `/go-api/internal/admin/system/user/passkeys` | 删除用户全部 Passkey（需 `reauth_ticket`） |
 | Record | GET | `/go-api/internal/admin/system/record/paginate` | 操作记录分页 |
 | Record | GET | `/go-api/internal/admin/system/record/detail` | 操作记录详情 |
 
@@ -278,7 +278,7 @@ Content-Type: application/json
 
 > 更完整的请求参数、响应示例和模块错误码请查看 `docs/Admin-System-Management.md`。
 >
-> 管理端鉴权接口请查看 `docs/Admin-Auth.md`。其中密码相关字段（`/go-api/internal/admin/auth/token` 的 `grant_type=password`、`/password/reset`、`/password`、以及未开启 TFA 时的 `/identifier`）前端必须传 `md5(明文密码)`。
+> 管理端鉴权接口请查看 `docs/Admin-Auth.md`。当前后台所有安全敏感修改/删除操作统一接入二次验证流程：优先 Passkey，可切换密码；未使用 Passkey 且已开启 TFA 时，需先验证密码，再提交 `totp_code` 换取 `reauth_ticket`。`/go-api/internal/admin/auth/password`、`/identifier`、`/tfa/enable`、`/tfa/disable`、`/passkey/register/options`、`/passkey` 以及管理员代操作的 `/go-api/internal/admin/system/user/password/reset`、`/tfa/disable`、`/passkey`、`/passkeys` 都必须携带 `reauth_ticket`。其中密码相关字段（`/go-api/internal/admin/auth/token` 的 `grant_type=password`、`/password/reset`、`/reauth/password`、以及敏感操作统一验证里的密码步骤）前端必须传 `md5(明文密码)`。
 
 ### 健康检查端点
 
