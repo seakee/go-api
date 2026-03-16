@@ -46,7 +46,7 @@ func TestAuthService_Reauth(t *testing.T) {
 			identifierUser:            &systemModel.User{Model: gorm.Model{ID: 1}, Status: 1, Password: passwordHash},
 			wantErrCode:               e.SUCCESS,
 			wantResult:                ReauthResult{ReauthTicket: "reauth-token"},
-			wantGeneratedReauthTicket: &reauthTicket{UserID: 1, Action: "oauth_reauth"},
+			wantGeneratedReauthTicket: &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
 		},
 		{
 			name:                  "totp enabled returns safe code challenge from password step",
@@ -56,24 +56,24 @@ func TestAuthService_Reauth(t *testing.T) {
 			identifierUser:        &systemModel.User{Model: gorm.Model{ID: 2}, Status: 1, Password: passwordHash, TotpEnabled: true, TotpKey: totpKey},
 			wantErrCode:           e.NeedTfa,
 			wantResult:            ReauthResult{SafeCode: "reauth-safe-code"},
-			wantGeneratedSafeCode: &safeCode{UserID: 2, Action: "oauth_reauth"},
+			wantGeneratedSafeCode: &safeCode{UserID: 2, Action: reauthActionHighRisk},
 		},
 		{
 			name:                      "totp challenge succeeds with safe code",
 			safeCode:                  "reauth-safe-code",
 			totpCode:                  validTotpCode,
 			safeCodeUser:              &systemModel.User{Model: gorm.Model{ID: 3}, Status: 1, Password: passwordHash, TotpEnabled: true, TotpKey: totpKey},
-			parsedSafeCode:            &safeCode{UserID: 3, Action: "oauth_reauth"},
+			parsedSafeCode:            &safeCode{UserID: 3, Action: reauthActionHighRisk},
 			wantErrCode:               e.SUCCESS,
 			wantResult:                ReauthResult{ReauthTicket: "reauth-token"},
-			wantGeneratedReauthTicket: &reauthTicket{UserID: 3, Action: "oauth_reauth"},
+			wantGeneratedReauthTicket: &reauthTicket{UserID: 3, Action: reauthActionHighRisk},
 		},
 		{
 			name:           "totp challenge rejects invalid code",
 			safeCode:       "reauth-safe-code",
 			totpCode:       "000000",
 			safeCodeUser:   &systemModel.User{Model: gorm.Model{ID: 4}, Status: 1, Password: passwordHash, TotpEnabled: true, TotpKey: totpKey},
-			parsedSafeCode: &safeCode{UserID: 4, Action: "oauth_reauth"},
+			parsedSafeCode: &safeCode{UserID: 4, Action: reauthActionHighRisk},
 			wantErrCode:    e.InvalidTotpCode,
 		},
 		{
@@ -266,7 +266,7 @@ func TestAuthService_UnbindOAuth(t *testing.T) {
 					if code != "reauth-code" {
 						t.Fatalf("parseReauthTicket() code = %s, want reauth-code", code)
 					}
-					return &reauthTicket{UserID: 7, Action: "oauth_reauth"}, nil
+					return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
 				},
 				consumeReauthTicketFn: func(ctx context.Context, code string) error {
 					if code != "reauth-code" {
@@ -356,7 +356,7 @@ func TestAuthService_ConfirmOAuthBind(t *testing.T) {
 				ProviderSubject: "user-001",
 				OAuthProfile:    &OAuthProfile{UserName: "来自飞书", Avatar: "https://example.com/avatar.png"},
 			},
-			reauthTicket:    &reauthTicket{UserID: 1, Action: "oauth_reauth"},
+			reauthTicket:    &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
 			syncFields:      []string{"user_name", "avatar"},
 			wantErrCode:     e.SUCCESS,
 			wantTokenUser:   "来自飞书",
@@ -404,7 +404,7 @@ func TestAuthService_ConfirmOAuthBind(t *testing.T) {
 				ProviderTenant:  "tenant-a",
 				ProviderSubject: "user-dup",
 			},
-			reauthTicket:    &reauthTicket{UserID: 1, Action: "oauth_reauth"},
+			reauthTicket:    &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
 			wantErrCode:     e.IdentifierConflict,
 			wantConsumeBind: false,
 			wantConsumeAuth: false,
@@ -420,7 +420,7 @@ func TestAuthService_ConfirmOAuthBind(t *testing.T) {
 				ProviderSubject: "user-cleanup-bind",
 				OAuthProfile:    &OAuthProfile{UserName: "来自飞书"},
 			},
-			reauthTicket:    &reauthTicket{UserID: 1, Action: "oauth_reauth"},
+			reauthTicket:    &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
 			consumeBindErr:  errors.New("delete bind ticket failed"),
 			wantErr:         true,
 			wantErrCode:     e.ERROR,
@@ -438,7 +438,7 @@ func TestAuthService_ConfirmOAuthBind(t *testing.T) {
 				ProviderSubject: "user-cleanup-reauth",
 				OAuthProfile:    &OAuthProfile{UserName: "来自飞书"},
 			},
-			reauthTicket:     &reauthTicket{UserID: 1, Action: "oauth_reauth"},
+			reauthTicket:     &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
 			consumeReauthErr: errors.New("delete reauth ticket failed"),
 			wantErr:          true,
 			wantErrCode:      e.ERROR,

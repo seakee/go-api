@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/seakee/go-api/app/config"
 	systemModel "github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/pkg/e"
 	"gorm.io/gorm"
@@ -17,7 +19,7 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 	t.Run("empty passkey id returns explicit error", func(t *testing.T) {
 		svc := &authService{}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 1, 0)
+		errCode, err := svc.DeletePasskey(context.Background(), 1, 0, "")
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v, want nil", err)
 		}
@@ -26,8 +28,46 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 		}
 	})
 
+	t.Run("missing reauth ticket returns explicit error", func(t *testing.T) {
+		svc := &authService{}
+
+		errCode, err := svc.DeletePasskey(context.Background(), 7, 11, "")
+		if err != nil {
+			t.Fatalf("DeletePasskey() error = %v, want nil", err)
+		}
+		if errCode != e.ReauthTicketCanNotBeNull {
+			t.Fatalf("DeletePasskey() errCode = %d, want %d", errCode, e.ReauthTicketCanNotBeNull)
+		}
+	})
+
+	t.Run("invalid reauth ticket returns explicit error", func(t *testing.T) {
+		svc := &authService{
+			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
+				if code != "reauth-code" {
+					t.Fatalf("parseReauthTicket() code = %s, want reauth-code", code)
+				}
+				return &reauthTicket{UserID: 7, Action: "invalid"}, nil
+			},
+			passkeyRepo: &mockUserPasskeyRepo{
+				DetailByIDAndUserIDFunc: func(ctx context.Context, id, userID uint) (*systemModel.UserPasskey, error) {
+					t.Fatalf("DetailByIDAndUserID() called unexpectedly")
+					return nil, nil
+				},
+			},
+		}
+
+		errCode, err := svc.DeletePasskey(context.Background(), 7, 11, "reauth-code")
+		if err != nil {
+			t.Fatalf("DeletePasskey() error = %v, want nil", err)
+		}
+		if errCode != e.InvalidReauthTicket {
+			t.Fatalf("DeletePasskey() errCode = %d, want %d", errCode, e.InvalidReauthTicket)
+		}
+	})
+
 	t.Run("reject delete when passkey is last login method", func(t *testing.T) {
 		deleteCalled := false
+		consumed := false
 
 		svc := &authService{
 			userRepo: &mockUserRepo{
@@ -47,9 +87,19 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 					return nil
 				},
 			},
+			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
+				if code != "reauth-code" {
+					t.Fatalf("parseReauthTicket() code = %s, want reauth-code", code)
+				}
+				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
+			},
+			consumeReauthTicketFn: func(ctx context.Context, code string) error {
+				consumed = true
+				return nil
+			},
 		}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 11)
+		errCode, err := svc.DeletePasskey(context.Background(), 7, 11, "reauth-code")
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v, want nil", err)
 		}
@@ -59,10 +109,14 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 		if deleteCalled {
 			t.Fatalf("DeletePasskey() should not call DeleteByIDAndUserID()")
 		}
+		if consumed {
+			t.Fatalf("DeletePasskey() should not consume reauth ticket on failure")
+		}
 	})
 
 	t.Run("delete passkey succeeds when other login method exists", func(t *testing.T) {
 		deleteCalled := false
+		consumed := false
 
 		svc := &authService{
 			userRepo: &mockUserRepo{
@@ -82,9 +136,22 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 					return nil
 				},
 			},
+			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
+				if code != "reauth-code" {
+					t.Fatalf("parseReauthTicket() code = %s, want reauth-code", code)
+				}
+				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
+			},
+			consumeReauthTicketFn: func(ctx context.Context, code string) error {
+				if code != "reauth-code" {
+					t.Fatalf("consumeReauthTicket() code = %s, want reauth-code", code)
+				}
+				consumed = true
+				return nil
+			},
 		}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 11)
+		errCode, err := svc.DeletePasskey(context.Background(), 7, 11, "reauth-code")
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v, want nil", err)
 		}
@@ -94,10 +161,14 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 		if !deleteCalled {
 			t.Fatalf("DeletePasskey() should call DeleteByIDAndUserID()")
 		}
+		if !consumed {
+			t.Fatalf("DeletePasskey() should consume reauth ticket on success")
+		}
 	})
 
 	t.Run("delete passkey succeeds when another passkey remains", func(t *testing.T) {
 		deleteCalled := false
+		consumed := false
 
 		svc := &authService{
 			userRepo: &mockUserRepo{
@@ -117,9 +188,19 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 					return nil
 				},
 			},
+			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
+				if code != "reauth-code" {
+					t.Fatalf("parseReauthTicket() code = %s, want reauth-code", code)
+				}
+				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
+			},
+			consumeReauthTicketFn: func(ctx context.Context, code string) error {
+				consumed = true
+				return nil
+			},
 		}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 11)
+		errCode, err := svc.DeletePasskey(context.Background(), 7, 11, "reauth-code")
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v, want nil", err)
 		}
@@ -129,9 +210,13 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 		if !deleteCalled {
 			t.Fatalf("DeletePasskey() should call DeleteByIDAndUserID()")
 		}
+		if !consumed {
+			t.Fatalf("DeletePasskey() should consume reauth ticket on success")
+		}
 	})
 
 	t.Run("delete maps record not found to passkey not found", func(t *testing.T) {
+		consumed := false
 		svc := &authService{
 			userRepo: &mockUserRepo{
 				DetailByIDFunc: func(ctx context.Context, id uint) (*systemModel.User, error) {
@@ -149,14 +234,27 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 					return gorm.ErrRecordNotFound
 				},
 			},
+			parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
+				if code != "reauth-code" {
+					t.Fatalf("parseReauthTicket() code = %s, want reauth-code", code)
+				}
+				return &reauthTicket{UserID: 7, Action: reauthActionHighRisk}, nil
+			},
+			consumeReauthTicketFn: func(ctx context.Context, code string) error {
+				consumed = true
+				return nil
+			},
 		}
 
-		errCode, err := svc.DeletePasskey(context.Background(), 7, 11)
+		errCode, err := svc.DeletePasskey(context.Background(), 7, 11, "reauth-code")
 		if err != nil {
 			t.Fatalf("DeletePasskey() error = %v, want nil", err)
 		}
 		if errCode != e.PasskeyCredentialNotFound {
 			t.Fatalf("DeletePasskey() errCode = %d, want %d", errCode, e.PasskeyCredentialNotFound)
+		}
+		if consumed {
+			t.Fatalf("DeletePasskey() should not consume reauth ticket when delete fails")
 		}
 	})
 }
@@ -458,5 +556,217 @@ func TestMarshalPasskeyCredentialPayload_EmptyResponse(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("marshalPasskeyCredentialPayload() error = nil, want non-nil")
+	}
+}
+
+func TestAuthService_getWebAuthn_UsesChallengeExpireTimeout(t *testing.T) {
+	svc := &authService{
+		config: config.AdminConfig{
+			WebAuthn: config.WebAuthnConfig{
+				RPID:              "localhost",
+				RPDisplayName:     "Go API Admin",
+				RPOrigins:         []string{"http://localhost:3000"},
+				ChallengeExpireIn: 180,
+			},
+		},
+	}
+
+	wa, err := svc.getWebAuthn()
+	if err != nil {
+		t.Fatalf("getWebAuthn() error = %v", err)
+	}
+
+	if !wa.Config.Timeouts.Login.Enforce {
+		t.Fatalf("getWebAuthn() login timeout should be enforced")
+	}
+	if !wa.Config.Timeouts.Registration.Enforce {
+		t.Fatalf("getWebAuthn() registration timeout should be enforced")
+	}
+	if wa.Config.Timeouts.Login.Timeout != 180*time.Second {
+		t.Fatalf("getWebAuthn() login timeout = %s, want %s", wa.Config.Timeouts.Login.Timeout, 180*time.Second)
+	}
+	if wa.Config.Timeouts.Registration.Timeout != 180*time.Second {
+		t.Fatalf("getWebAuthn() registration timeout = %s, want %s", wa.Config.Timeouts.Registration.Timeout, 180*time.Second)
+	}
+}
+
+func TestPasskeyRegistrationOptions_RequireResidentKey(t *testing.T) {
+	wa, err := webauthn.New(&webauthn.Config{
+		RPID:          "localhost",
+		RPDisplayName: "Go API Admin",
+		RPOrigins:     []string{"http://localhost:3000"},
+	})
+	if err != nil {
+		t.Fatalf("webauthn.New() error = %v", err)
+	}
+
+	creation, _, err := wa.BeginRegistration(passkeyWebAuthnUser{
+		id:          []byte{1},
+		name:        "admin@example.com",
+		displayName: "Admin Passkey",
+	}, passkeyRegistrationOptions("preferred")...)
+	if err != nil {
+		t.Fatalf("BeginRegistration() error = %v", err)
+	}
+
+	if creation.Response.AuthenticatorSelection.ResidentKey != protocol.ResidentKeyRequirementRequired {
+		t.Fatalf("resident key requirement = %s, want %s", creation.Response.AuthenticatorSelection.ResidentKey, protocol.ResidentKeyRequirementRequired)
+	}
+	if creation.Response.AuthenticatorSelection.RequireResidentKey == nil {
+		t.Fatalf("require resident key = nil, want non-nil")
+	}
+	if !*creation.Response.AuthenticatorSelection.RequireResidentKey {
+		t.Fatalf("require resident key = false, want true")
+	}
+}
+
+func TestPasskeyDiscoverableLoginOptions(t *testing.T) {
+	wa, err := webauthn.New(&webauthn.Config{
+		RPID:          "localhost",
+		RPDisplayName: "Go API Admin",
+		RPOrigins:     []string{"http://localhost:3000"},
+	})
+	if err != nil {
+		t.Fatalf("webauthn.New() error = %v", err)
+	}
+
+	assertion, session, err := wa.BeginDiscoverableLogin(passkeyDiscoverableLoginOptions("required")...)
+	if err != nil {
+		t.Fatalf("BeginDiscoverableLogin() error = %v", err)
+	}
+
+	if assertion.Response.UserVerification != protocol.VerificationRequired {
+		t.Fatalf("user verification = %s, want %s", assertion.Response.UserVerification, protocol.VerificationRequired)
+	}
+	if len(assertion.Response.AllowedCredentials) != 0 {
+		t.Fatalf("allowed credentials len = %d, want 0", len(assertion.Response.AllowedCredentials))
+	}
+	if len(session.UserID) != 0 {
+		t.Fatalf("session user id = %v, want empty", session.UserID)
+	}
+}
+
+func TestResolvePasskeyLoginUser(t *testing.T) {
+	storedCredential := webauthn.Credential{
+		ID:        []byte{1, 2, 3},
+		PublicKey: []byte{4, 5, 6},
+		Authenticator: webauthn.Authenticator{
+			SignCount: 9,
+			AAGUID:    []byte{7, 8},
+		},
+	}
+	storedRaw, err := json.Marshal(storedCredential)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	t.Run("resolves user and passkey from raw id and user handle", func(t *testing.T) {
+		credentialID := encodeBytesToBase64URL(storedCredential.ID)
+		passkeyRecord := &systemModel.UserPasskey{
+			Model:               gorm.Model{ID: 11},
+			UserID:              7,
+			CredentialID:        credentialID,
+			CredentialPublicKey: string(storedRaw),
+			UserHandle:          encodeBytesToBase64URL(encodePasskeyUserHandleBinary(7)),
+		}
+
+		svc := &authService{
+			userRepo: &mockUserRepo{
+				DetailByIDFunc: func(ctx context.Context, id uint) (*systemModel.User, error) {
+					if id != 7 {
+						t.Fatalf("DetailByID() id = %d, want 7", id)
+					}
+					return &systemModel.User{Model: gorm.Model{ID: id}, Status: 1, Email: "admin@example.com"}, nil
+				},
+			},
+			passkeyRepo: &mockUserPasskeyRepo{
+				DetailByCredentialIDFunc: func(ctx context.Context, credentialID string) (*systemModel.UserPasskey, error) {
+					if credentialID != encodeBytesToBase64URL(storedCredential.ID) {
+						t.Fatalf("DetailByCredentialID() credentialID = %s, want %s", credentialID, encodeBytesToBase64URL(storedCredential.ID))
+					}
+					return passkeyRecord, nil
+				},
+				ListByUserIDFunc: func(ctx context.Context, userID uint) ([]systemModel.UserPasskey, error) {
+					if userID != 7 {
+						t.Fatalf("ListByUserID() userID = %d, want 7", userID)
+					}
+					return []systemModel.UserPasskey{*passkeyRecord}, nil
+				},
+			},
+		}
+
+		user, passkey, waUser, errCode, err := svc.resolvePasskeyLoginUser(context.Background(), storedCredential.ID, encodePasskeyUserHandleBinary(7))
+		if err != nil {
+			t.Fatalf("resolvePasskeyLoginUser() error = %v", err)
+		}
+		if errCode != e.SUCCESS {
+			t.Fatalf("resolvePasskeyLoginUser() errCode = %d, want %d", errCode, e.SUCCESS)
+		}
+		if user == nil || user.ID != 7 {
+			t.Fatalf("resolvePasskeyLoginUser() user = %+v, want user id 7", user)
+		}
+		if passkey == nil || passkey.ID != 11 {
+			t.Fatalf("resolvePasskeyLoginUser() passkey = %+v, want passkey id 11", passkey)
+		}
+		if len(waUser.credentials) != 1 {
+			t.Fatalf("resolvePasskeyLoginUser() credentials len = %d, want 1", len(waUser.credentials))
+		}
+	})
+
+	t.Run("rejects invalid user handle", func(t *testing.T) {
+		svc := &authService{
+			passkeyRepo: &mockUserPasskeyRepo{
+				DetailByCredentialIDFunc: func(ctx context.Context, credentialID string) (*systemModel.UserPasskey, error) {
+					return &systemModel.UserPasskey{
+						Model:               gorm.Model{ID: 11},
+						UserID:              7,
+						CredentialID:        encodeBytesToBase64URL(storedCredential.ID),
+						CredentialPublicKey: string(storedRaw),
+					}, nil
+				},
+			},
+			userRepo: &mockUserRepo{
+				DetailByIDFunc: func(ctx context.Context, id uint) (*systemModel.User, error) {
+					t.Fatalf("DetailByID() called unexpectedly")
+					return nil, nil
+				},
+			},
+		}
+
+		_, _, _, errCode, err := svc.resolvePasskeyLoginUser(context.Background(), storedCredential.ID, []byte{1, 2, 3})
+		if err == nil {
+			t.Fatalf("resolvePasskeyLoginUser() error = nil, want non-nil")
+		}
+		if errCode != e.PasskeyVerificationFailed {
+			t.Fatalf("resolvePasskeyLoginUser() errCode = %d, want %d", errCode, e.PasskeyVerificationFailed)
+		}
+	})
+}
+
+func TestDecodePasskeyUserHandleBinary(t *testing.T) {
+	userID, err := decodePasskeyUserHandleBinary(encodePasskeyUserHandleBinary(9))
+	if err != nil {
+		t.Fatalf("decodePasskeyUserHandleBinary() error = %v", err)
+	}
+	if userID != 9 {
+		t.Fatalf("decodePasskeyUserHandleBinary() userID = %d, want 9", userID)
+	}
+
+	if _, err = decodePasskeyUserHandleBinary([]byte{1, 2, 3}); err == nil {
+		t.Fatalf("decodePasskeyUserHandleBinary() error = nil, want non-nil")
+	}
+}
+
+func TestPasskeySessionExpired(t *testing.T) {
+	if passkeySessionExpired(&webauthn.SessionData{}) {
+		t.Fatalf("passkeySessionExpired() = true for zero expires, want false")
+	}
+
+	if passkeySessionExpired(&webauthn.SessionData{Expires: time.Now().Add(time.Minute)}) {
+		t.Fatalf("passkeySessionExpired() = true for future expires, want false")
+	}
+
+	if !passkeySessionExpired(&webauthn.SessionData{Expires: time.Now().Add(-time.Minute)}) {
+		t.Fatalf("passkeySessionExpired() = false for past expires, want true")
 	}
 }
