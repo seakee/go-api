@@ -206,12 +206,16 @@ func shouldOmitOperationPayload(path string) bool {
 		"/go-api/internal/admin/auth/password/reset",
 		"/go-api/internal/admin/auth/password",
 		"/go-api/internal/admin/auth/identifier",
-		"/go-api/internal/admin/auth/oauth/bind",
+		"/go-api/internal/admin/auth/reauth/password",
+		"/go-api/internal/admin/auth/reauth/totp",
+		"/go-api/internal/admin/auth/oauth/bind/confirm",
 		"/go-api/internal/admin/auth/passkey/register/finish",
 		"/go-api/internal/admin/auth/passkey/login/finish",
+		"/go-api/internal/admin/auth/reauth/passkey/finish",
 		"/go-api/internal/admin/auth/tfa/enable",
 		"/go-api/internal/admin/auth/tfa/disable",
 		"/go-api/internal/admin/system/user/password/reset",
+		"/go-api/internal/admin/system/user/tfa/disable",
 		"/go-api/internal/admin/system/user/passkey",
 		"/go-api/internal/admin/system/user/passkeys":
 		return true

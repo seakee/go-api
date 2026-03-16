@@ -20,6 +20,9 @@ type Handler interface {
 
 	OAuthUrl() gin.HandlerFunc
 	Reauth() gin.HandlerFunc
+	ReauthMethods() gin.HandlerFunc
+	ReauthByPassword() gin.HandlerFunc
+	ReauthByTotp() gin.HandlerFunc
 	ConfirmOAuthBind() gin.HandlerFunc
 	OAuthAccounts() gin.HandlerFunc
 	UnbindOAuth() gin.HandlerFunc
@@ -35,6 +38,8 @@ type Handler interface {
 
 	BeginPasskeyRegistration() gin.HandlerFunc
 	FinishPasskeyRegistration() gin.HandlerFunc
+	BeginPasskeyReauth() gin.HandlerFunc
+	FinishPasskeyReauth() gin.HandlerFunc
 	BeginPasskeyLogin() gin.HandlerFunc
 	FinishPasskeyLogin() gin.HandlerFunc
 	Passkeys() gin.HandlerFunc
@@ -61,7 +66,7 @@ func (h handler) TfaStatus() gin.HandlerFunc {
 func (h handler) DisableTfa() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			TotpCode string `json:"totp_code" binding:"required"`
+			ReauthTicket string `json:"reauth_ticket" binding:"required"`
 		}
 
 		var err error
@@ -71,7 +76,7 @@ func (h handler) DisableTfa() gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 
 		if err = c.ShouldBind(&req); err == nil {
-			errCode, err = h.service.DisableTfa(h.Context(c), userID.(uint), req.TotpCode)
+			errCode, err = h.service.DisableTfa(h.Context(c), userID.(uint), req.ReauthTicket)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)
@@ -81,8 +86,9 @@ func (h handler) DisableTfa() gin.HandlerFunc {
 func (h handler) EnableTfa() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			TotpCode string `json:"totp_code" binding:"required"`
-			TotpKey  string `json:"totp_key" binding:"required"`
+			ReauthTicket string `json:"reauth_ticket" binding:"required"`
+			TotpCode     string `json:"totp_code" binding:"required"`
+			TotpKey      string `json:"totp_key" binding:"required"`
 		}
 
 		var err error
@@ -92,7 +98,7 @@ func (h handler) EnableTfa() gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 
 		if err = c.ShouldBind(&req); err == nil {
-			errCode, err = h.service.EnableTfa(h.Context(c), userID.(uint), req.TotpCode, req.TotpKey)
+			errCode, err = h.service.EnableTfa(h.Context(c), userID.(uint), req.ReauthTicket, req.TotpCode, req.TotpKey)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)
@@ -113,10 +119,9 @@ func (h handler) TotpKey() gin.HandlerFunc {
 func (h handler) UpdateIdentifier() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			TotpCode string `json:"totp_code"`
-			Password string `json:"password"`
-			Email    string `json:"email"`
-			Phone    string `json:"phone"`
+			ReauthTicket string `json:"reauth_ticket" binding:"required"`
+			Email        string `json:"email"`
+			Phone        string `json:"phone"`
 		}
 
 		var err error
@@ -126,7 +131,7 @@ func (h handler) UpdateIdentifier() gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 
 		if err = c.ShouldBind(&req); err == nil {
-			errCode, err = h.service.UpdateIdentifier(h.Context(c), userID.(uint), req.TotpCode, req.Password, req.Email, req.Phone)
+			errCode, err = h.service.UpdateIdentifier(h.Context(c), userID.(uint), req.ReauthTicket, req.Email, req.Phone)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)
@@ -148,6 +153,53 @@ func (h handler) Reauth() gin.HandlerFunc {
 
 		if err = c.ShouldBind(&req); err == nil {
 			result, errCode, err = h.service.Reauth(h.Context(c), req.Identifier, req.Password, req.SafeCode, req.TotpCode)
+		}
+
+		h.I18n.JSON(c, errCode, result, err)
+	}
+}
+
+func (h handler) ReauthMethods() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		result, errCode, err := h.service.ReauthMethods(h.Context(c), userID.(uint))
+		h.I18n.JSON(c, errCode, result, err)
+	}
+}
+
+func (h handler) ReauthByPassword() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Password string `json:"password" binding:"required"`
+		}
+
+		var result system.ReauthResult
+		var err error
+		errCode := e.InvalidParams
+
+		userID, _ := c.Get("user_id")
+		if err = c.ShouldBind(&req); err == nil {
+			result, errCode, err = h.service.ReauthByPassword(h.Context(c), userID.(uint), req.Password)
+		}
+
+		h.I18n.JSON(c, errCode, result, err)
+	}
+}
+
+func (h handler) ReauthByTotp() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			SafeCode string `json:"safe_code" binding:"required"`
+			TotpCode string `json:"totp_code" binding:"required"`
+		}
+
+		var result system.ReauthResult
+		var err error
+		errCode := e.InvalidParams
+
+		userID, _ := c.Get("user_id")
+		if err = c.ShouldBind(&req); err == nil {
+			result, errCode, err = h.service.ReauthByTotp(h.Context(c), userID.(uint), req.SafeCode, req.TotpCode)
 		}
 
 		h.I18n.JSON(c, errCode, result, err)
@@ -278,9 +330,8 @@ func (h handler) ResetPassword() gin.HandlerFunc {
 func (h handler) UpdatePassword() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			TotpCode    string `json:"totp_code"`
-			OldPassword string `json:"old_password"`
-			Password    string `json:"password" binding:"required"`
+			ReauthTicket string `json:"reauth_ticket" binding:"required"`
+			Password     string `json:"password" binding:"required"`
 		}
 
 		var err error
@@ -290,7 +341,7 @@ func (h handler) UpdatePassword() gin.HandlerFunc {
 		userID, _ := c.Get("user_id")
 
 		if err = c.ShouldBind(&req); err == nil {
-			errCode, err = h.service.UpdatePassword(h.Context(c), userID.(uint), req.TotpCode, req.OldPassword, req.Password)
+			errCode, err = h.service.UpdatePassword(h.Context(c), userID.(uint), req.ReauthTicket, req.Password)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)

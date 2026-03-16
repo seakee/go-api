@@ -2,8 +2,12 @@ package system
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"strconv"
 	"strings"
 
+	redigo "github.com/gomodule/redigo/redis"
 	"github.com/seakee/go-api/app/pkg/e"
 	"github.com/sk-pkg/util"
 )
@@ -21,6 +25,35 @@ type reauthTicket struct {
 	UserID uint   `json:"user_id"`
 	Action string `json:"action"`
 }
+
+const takeReauthTicketLuaScript = `
+local value = redis.call("GET", KEYS[1])
+if not value then
+	return nil
+end
+
+local ok, data = pcall(cjson.decode, value)
+if not ok or not data then
+	return nil
+end
+
+if data["action"] ~= ARGV[1] then
+	return nil
+end
+
+local expected_user_id = tonumber(ARGV[2])
+local ticket_user_id = tonumber(data["user_id"] or 0)
+if not ticket_user_id or ticket_user_id == 0 then
+	return nil
+end
+
+if expected_user_id ~= 0 and ticket_user_id ~= expected_user_id then
+	return nil
+end
+
+redis.call("DEL", KEYS[1])
+return value
+`
 
 func (a authService) generateBindTicket(ctx context.Context, ticket bindTicket) (string, error) {
 	if a.generateBindTicketFn != nil {
@@ -92,6 +125,63 @@ func (a authService) consumeReauthTicket(ctx context.Context, code string) error
 
 	_, err := a.redis.DelWithContext(ctx, reauthTicketPrefix+code)
 	return err
+}
+
+func (a authService) takeReauthTicket(ctx context.Context, code string, userID uint, action string) (*reauthTicket, error) {
+	if a.takeReauthTicketFn != nil {
+		return a.takeReauthTicketFn(ctx, code, userID, action)
+	}
+	if a.redis == nil {
+		return nil, redigo.ErrNil
+	}
+
+	reply, err := a.redis.LuaWithContext(
+		ctx,
+		1,
+		takeReauthTicketLuaScript,
+		[]string{
+			a.redis.Prefix + reauthTicketPrefix + code,
+			action,
+			strconv.FormatUint(uint64(userID), 10),
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if reply == nil {
+		return nil, redigo.ErrNil
+	}
+
+	raw, err := redigo.Bytes(reply, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var ticket reauthTicket
+	if err = json.Unmarshal(raw, &ticket); err != nil {
+		return nil, err
+	}
+
+	return &ticket, nil
+}
+
+func (a authService) consumeValidatedReauthTicket(ctx context.Context, code string, userID uint) (*reauthTicket, int, error) {
+	if strings.TrimSpace(code) == "" {
+		return nil, e.ReauthTicketCanNotBeNull, nil
+	}
+
+	ticket, err := a.takeReauthTicket(ctx, code, userID, reauthActionHighRisk)
+	if err != nil {
+		if errors.Is(err, redigo.ErrNil) {
+			return nil, e.InvalidReauthTicket, nil
+		}
+		return nil, e.InvalidReauthTicket, err
+	}
+	if ticket == nil || ticket.Action != reauthActionHighRisk || ticket.UserID == 0 {
+		return nil, e.InvalidReauthTicket, nil
+	}
+
+	return ticket, e.SUCCESS, nil
 }
 
 func (a authService) validateReauthTicket(ctx context.Context, code string, userID uint) (*reauthTicket, int, error) {

@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-resty/resty/v2"
 	"gorm.io/gorm"
@@ -16,7 +15,6 @@ import (
 	"github.com/seakee/go-api/app/model/system"
 	"github.com/seakee/go-api/app/pkg/e"
 	pwd "github.com/seakee/go-api/app/pkg/password"
-	"github.com/seakee/go-api/app/pkg/totp"
 	"github.com/sk-pkg/util"
 )
 
@@ -639,88 +637,70 @@ func TestAuthService_UserMenuList(t *testing.T) {
 	}
 }
 
-// TestAuthService_UpdatePassword tests update password with and without TFA.
+// TestAuthService_UpdatePassword tests update password with the unified reauth ticket.
 func TestAuthService_UpdatePassword(t *testing.T) {
-	generator := totp.NewGenerator("go-api-admin")
-	totpKey := "JBSWY3DPEHPK3PXP"
-	validTotpCode := generator.GenerateTOTPCode(totpKey, time.Now())
-	oldPasswordHash, err := pwd.HashCredential("old-md5-password")
-	if err != nil {
-		t.Fatalf("HashCredential() error = %v", err)
-	}
-
 	tests := []struct {
-		name        string
-		totpCode    string
-		oldPassword string
-		password    string
-		mockUser    *system.User
-		wantErrCode int
-		wantErr     bool
-		wantUpdated bool
+		name         string
+		reauthTicket string
+		password     string
+		mockUser     *system.User
+		parsedTicket *reauthTicket
+		wantErrCode  int
+		wantErr      bool
+		wantUpdated  bool
+		wantConsumed bool
 	}{
 		{
-			name:        "update password successfully when tfa disabled",
-			oldPassword: "old-md5-password",
-			password:    "new-md5-password",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: false,
-				Password:    oldPasswordHash,
-			},
-			wantErrCode: 0,
-			wantErr:     false,
-			wantUpdated: true,
+			name:         "password is required",
+			reauthTicket: "reauth-code",
+			parsedTicket: &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
+			wantErrCode:  e.PasswordCanNotBeNull,
+			wantErr:      false,
+			wantUpdated:  false,
+			wantConsumed: false,
 		},
 		{
-			name:        "old password mismatch when tfa disabled",
-			oldPassword: "wrong-password",
-			password:    "new-md5-password",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: false,
-				Password:    oldPasswordHash,
-			},
-			wantErrCode: e.IdentifierOrPasswordFail,
-			wantErr:     false,
-			wantUpdated: false,
+			name:         "invalid reauth ticket is rejected",
+			reauthTicket: "reauth-code",
+			password:     "new-md5-password",
+			wantErrCode:  e.InvalidReauthTicket,
+			wantErr:      false,
+			wantUpdated:  false,
+			wantConsumed: false,
 		},
 		{
-			name:     "totp code required when tfa enabled",
-			password: "new-md5-password",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: true,
-				TotpKey:     totpKey,
-			},
-			wantErrCode: e.TotpCodeCanNotBeNull,
-			wantErr:     false,
-			wantUpdated: false,
+			name:         "user not found after reauth",
+			reauthTicket: "reauth-code",
+			password:     "new-md5-password",
+			parsedTicket: &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
+			wantErrCode:  e.UserNotFound,
+			wantErr:      false,
+			wantUpdated:  false,
+			wantConsumed: false,
 		},
 		{
-			name:     "update password successfully when tfa enabled",
-			totpCode: validTotpCode,
-			password: "new-md5-password",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: true,
-				TotpKey:     totpKey,
-			},
-			wantErrCode: 0,
-			wantErr:     false,
-			wantUpdated: true,
+			name:         "update password succeeds and consumes ticket",
+			reauthTicket: "reauth-code",
+			password:     "new-md5-password",
+			mockUser:     &system.User{Model: gorm.Model{ID: 1}, Status: 1},
+			parsedTicket: &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
+			wantErrCode:  e.SUCCESS,
+			wantErr:      false,
+			wantUpdated:  true,
+			wantConsumed: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			updated := false
+			consumed := false
 			mockUserRepo := &mockUserRepo{
-				DetailFunc: func(ctx context.Context, user *system.User) (*system.User, error) {
-					if user.ID == 1 {
-						return tt.mockUser, nil
+				DetailByIDFunc: func(ctx context.Context, id uint) (*system.User, error) {
+					if id != 1 {
+						t.Fatalf("DetailByID() id = %d, want 1", id)
 					}
-					return nil, nil
+					return tt.mockUser, nil
 				},
 				UpdateFunc: func(ctx context.Context, user *system.User) error {
 					updated = true
@@ -733,10 +713,25 @@ func TestAuthService_UpdatePassword(t *testing.T) {
 
 			svc := &authService{
 				userRepo: mockUserRepo,
-				totp:     generator,
+				parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
+					if tt.password == "" {
+						t.Fatalf("parseReauthTicket() called unexpectedly")
+					}
+					if code != tt.reauthTicket {
+						t.Fatalf("parseReauthTicket() code = %s, want %s", code, tt.reauthTicket)
+					}
+					return tt.parsedTicket, nil
+				},
+				consumeReauthTicketFn: func(ctx context.Context, code string) error {
+					if code != tt.reauthTicket {
+						t.Fatalf("consumeReauthTicket() code = %s, want %s", code, tt.reauthTicket)
+					}
+					consumed = true
+					return nil
+				},
 			}
 
-			errCode, err := svc.UpdatePassword(context.Background(), 1, tt.totpCode, tt.oldPassword, tt.password)
+			errCode, err := svc.UpdatePassword(context.Background(), 1, tt.reauthTicket, tt.password)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UpdatePassword() error = %v, wantErr %v", err, tt.wantErr)
@@ -750,138 +745,97 @@ func TestAuthService_UpdatePassword(t *testing.T) {
 			if updated != tt.wantUpdated {
 				t.Errorf("UpdatePassword() updated = %v, want %v", updated, tt.wantUpdated)
 			}
+			if consumed != tt.wantConsumed {
+				t.Errorf("UpdatePassword() consumed = %v, want %v", consumed, tt.wantConsumed)
+			}
 		})
 	}
 }
 
-// TestAuthService_UpdateIdentifier tests update identifier with and without TFA.
+// TestAuthService_UpdateIdentifier tests update identifier with the unified reauth ticket.
 func TestAuthService_UpdateIdentifier(t *testing.T) {
-	generator := totp.NewGenerator("go-api-admin")
-	totpKey := "JBSWY3DPEHPK3PXP"
-	validTotpCode := generator.GenerateTOTPCode(totpKey, time.Now())
-	currentPasswordHash, err := pwd.HashCredential("current-md5-password")
-	if err != nil {
-		t.Fatalf("HashCredential() error = %v", err)
-	}
-
 	tests := []struct {
 		name          string
-		totpCode      string
-		password      string
+		reauthTicket  string
 		email         string
 		phone         string
 		mockUser      *system.User
 		existingEmail *system.User
 		existingPhone *system.User
+		parsedTicket  *reauthTicket
 		wantErrCode   int
 		wantErr       bool
 		wantUpdated   bool
+		wantConsumed  bool
 	}{
 		{
-			name:     "update identifier successfully when tfa disabled",
-			password: "current-md5-password",
-			email:    "new@example.com",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: false,
-				Password:    currentPasswordHash,
-			},
-			wantErrCode: 0,
-			wantErr:     false,
-			wantUpdated: true,
+			name:         "reauth ticket is required",
+			email:        "new@example.com",
+			wantErrCode:  e.ReauthTicketCanNotBeNull,
+			wantErr:      false,
+			wantUpdated:  false,
+			wantConsumed: false,
 		},
 		{
-			name:     "password mismatch when tfa disabled",
-			password: "wrong-password",
-			email:    "new@example.com",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: false,
-				Password:    currentPasswordHash,
-			},
-			wantErrCode: e.IdentifierOrPasswordFail,
-			wantErr:     false,
-			wantUpdated: false,
+			name:         "invalid reauth ticket is rejected",
+			reauthTicket: "reauth-code",
+			email:        "new@example.com",
+			wantErrCode:  e.InvalidReauthTicket,
+			wantErr:      false,
+			wantUpdated:  false,
+			wantConsumed: false,
 		},
 		{
-			name:  "totp code required when tfa enabled",
-			email: "new@example.com",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: true,
-				TotpKey:     totpKey,
-			},
-			wantErrCode: e.TotpCodeCanNotBeNull,
-			wantErr:     false,
-			wantUpdated: false,
+			name:         "invalid email format is rejected",
+			reauthTicket: "reauth-code",
+			email:        "invalid-email",
+			wantErrCode:  e.InvalidIdentifier,
+			wantErr:      false,
+			wantUpdated:  false,
+			wantConsumed: false,
 		},
 		{
-			name:     "update identifier successfully when tfa enabled",
-			totpCode: validTotpCode,
-			email:    "new@example.com",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: true,
-				TotpKey:     totpKey,
+			name:         "email exists",
+			reauthTicket: "reauth-code",
+			email:        "duplicated@example.com",
+			mockUser:     &system.User{Model: gorm.Model{ID: 1}, Status: 1},
+			existingEmail: &system.User{
+				Model: gorm.Model{ID: 2},
+				Email: "duplicated@example.com",
 			},
-			wantErrCode: 0,
-			wantErr:     false,
-			wantUpdated: true,
+			parsedTicket: &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
+			wantErrCode:  e.IdentifierExists,
+			wantErr:      false,
+			wantUpdated:  false,
+			wantConsumed: false,
 		},
 		{
-			name:     "email exists",
-			password: "current-md5-password",
-			email:    "duplicated@example.com",
+			name:         "update identifier succeeds and consumes ticket",
+			reauthTicket: "reauth-code",
+			phone:        "+8613800000002",
 			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: false,
-				Password:    currentPasswordHash,
+				Model:  gorm.Model{ID: 1},
+				Status: 1,
+				Email:  "old@example.com",
 			},
-			existingEmail: &system.User{Model: gorm.Model{ID: 2}, Email: "duplicated@example.com"},
-			wantErrCode:   e.IdentifierExists,
-			wantErr:       false,
-			wantUpdated:   false,
-		},
-		{
-			name:     "phone exists",
-			password: "current-md5-password",
-			phone:    "+8613800000001",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: false,
-				Password:    currentPasswordHash,
-			},
-			existingPhone: &system.User{Model: gorm.Model{ID: 2}, Phone: "+8613800000001"},
-			wantErrCode:   e.IdentifierExists,
-			wantErr:       false,
-			wantUpdated:   false,
-		},
-		{
-			name:     "switch from email to phone successfully",
-			password: "current-md5-password",
-			email:    "",
-			phone:    "+8613800000002",
-			mockUser: &system.User{
-				Model:       gorm.Model{ID: 1},
-				TotpEnabled: false,
-				Password:    currentPasswordHash,
-				Email:       "old@example.com",
-			},
-			wantErrCode: e.SUCCESS,
-			wantErr:     false,
-			wantUpdated: true,
+			parsedTicket: &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
+			wantErrCode:  e.SUCCESS,
+			wantErr:      false,
+			wantUpdated:  true,
+			wantConsumed: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			updated := false
+			consumed := false
 			mockUserRepo := &mockUserRepo{
-				DetailFunc: func(ctx context.Context, user *system.User) (*system.User, error) {
-					if user.ID == 1 {
-						return tt.mockUser, nil
+				DetailByIDFunc: func(ctx context.Context, id uint) (*system.User, error) {
+					if id != 1 {
+						t.Fatalf("DetailByID() id = %d, want 1", id)
 					}
-					return nil, nil
+					return tt.mockUser, nil
 				},
 				DetailByEmailFunc: func(ctx context.Context, email string) (*system.User, error) {
 					if email == tt.email {
@@ -909,10 +863,25 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 
 			svc := &authService{
 				userRepo: mockUserRepo,
-				totp:     generator,
+				parseReauthTicketFn: func(ctx context.Context, code string) (*reauthTicket, error) {
+					if tt.reauthTicket == "" {
+						t.Fatalf("parseReauthTicket() called unexpectedly")
+					}
+					if code != tt.reauthTicket {
+						t.Fatalf("parseReauthTicket() code = %s, want %s", code, tt.reauthTicket)
+					}
+					return tt.parsedTicket, nil
+				},
+				consumeReauthTicketFn: func(ctx context.Context, code string) error {
+					if code != tt.reauthTicket {
+						t.Fatalf("consumeReauthTicket() code = %s, want %s", code, tt.reauthTicket)
+					}
+					consumed = true
+					return nil
+				},
 			}
 
-			errCode, err := svc.UpdateIdentifier(context.Background(), 1, tt.totpCode, tt.password, tt.email, tt.phone)
+			errCode, err := svc.UpdateIdentifier(context.Background(), 1, tt.reauthTicket, tt.email, tt.phone)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UpdateIdentifier() error = %v, wantErr %v", err, tt.wantErr)
@@ -925,6 +894,9 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 
 			if updated != tt.wantUpdated {
 				t.Errorf("UpdateIdentifier() updated = %v, want %v", updated, tt.wantUpdated)
+			}
+			if consumed != tt.wantConsumed {
+				t.Errorf("UpdateIdentifier() consumed = %v, want %v", consumed, tt.wantConsumed)
 			}
 		})
 	}

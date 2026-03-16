@@ -24,6 +24,9 @@ func (a authService) generatePasskeyChallenge(ctx context.Context, challenge pas
 	if challenge.CreatedAt == 0 {
 		challenge.CreatedAt = time.Now().Unix()
 	}
+	if a.generatePasskeyChallengeFn != nil {
+		return a.generatePasskeyChallengeFn(ctx, challenge)
+	}
 
 	err := a.redis.SetJSONWithContext(
 		ctx,

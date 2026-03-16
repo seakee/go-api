@@ -109,18 +109,23 @@ type AuthService interface {
 	UpdateProfile(ctx context.Context, userID uint, userName, avatar string) (errCode int, err error)
 	UserMenuList(ctx context.Context, userID uint) (list system.MenuList, err error)
 	ResetPassword(ctx context.Context, sCode string, password string) (errCode int, err error)
-	UpdatePassword(ctx context.Context, userID uint, totpCode, oldPassword, password string) (errCode int, err error)
-	UpdateIdentifier(ctx context.Context, userID uint, totpCode, password, email, phone string) (errCode int, err error)
+	UpdatePassword(ctx context.Context, userID uint, reauthTicket, password string) (errCode int, err error)
+	UpdateIdentifier(ctx context.Context, userID uint, reauthTicket, email, phone string) (errCode int, err error)
 	Reauth(ctx context.Context, identifier, password, safeCode, totpCode string) (result ReauthResult, errCode int, err error)
+	ReauthMethods(ctx context.Context, userID uint) (result ReauthMethodsResult, errCode int, err error)
+	ReauthByPassword(ctx context.Context, userID uint, password string) (result ReauthResult, errCode int, err error)
+	ReauthByTotp(ctx context.Context, userID uint, safeCode, totpCode string) (result ReauthResult, errCode int, err error)
 	ConfirmOAuthBind(ctx context.Context, bindTicket, reauthTicket string, syncFields []string) (token AccessToken, errCode int, err error)
 	OAuthAccounts(ctx context.Context, userID uint) (accounts []OAuthAccount, errCode int, err error)
 	UnbindOAuth(ctx context.Context, userID, identityID uint, reauthTicket string) (errCode int, err error)
-	EnableTfa(ctx context.Context, userID uint, totpCode string, totpKey string) (errCode int, err error)
-	DisableTfa(ctx context.Context, userID uint, totpCode string) (errCode int, err error)
+	EnableTfa(ctx context.Context, userID uint, reauthTicket, totpCode, totpKey string) (errCode int, err error)
+	DisableTfa(ctx context.Context, userID uint, reauthTicket string) (errCode int, err error)
 	TotpKey(ctx context.Context, userID uint) (key, qrCode string, errCode int, err error)
 	TfaStatus(ctx context.Context, userID uint) (enable bool, errCode int, err error)
-	BeginPasskeyRegistration(ctx context.Context, userID uint, displayName string) (result PasskeyOptionsResult, errCode int, err error)
+	BeginPasskeyRegistration(ctx context.Context, userID uint, reauthTicket, displayName string) (result PasskeyOptionsResult, errCode int, err error)
 	FinishPasskeyRegistration(ctx context.Context, userID uint, challengeID string, credential PasskeyCredential) (result PasskeyItem, errCode int, err error)
+	BeginPasskeyReauth(ctx context.Context, userID uint) (result PasskeyOptionsResult, errCode int, err error)
+	FinishPasskeyReauth(ctx context.Context, userID uint, challengeID string, credential PasskeyCredential) (result ReauthResult, errCode int, err error)
 	BeginPasskeyLogin(ctx context.Context) (result PasskeyOptionsResult, errCode int, err error)
 	FinishPasskeyLogin(ctx context.Context, challengeID string, credential PasskeyCredential) (token AccessToken, errCode int, err error)
 	ListPasskeys(ctx context.Context, userID uint) (list []PasskeyItem, errCode int, err error)
@@ -130,26 +135,28 @@ type AuthService interface {
 
 // authService implements the AuthService interface.
 type authService struct {
-	redis                  *redis.Manager
-	logger                 *logger.Manager
-	db                     *gorm.DB
-	userRepo               repo.UserRepo
-	identityRepo           repo.UserIdentityRepo
-	passkeyRepo            repo.UserPasskeyRepo
-	totp                   totp.Generator
-	authRepo               repo.AuthRepo
-	menuRepo               repo.MenuRepo
-	config                 config.AdminConfig
-	request                *resty.Client
-	notify                 *notify.Manager
-	generateSafeCodeFn     func(ctx context.Context, safeCode safeCode) (string, error)
-	parseSafeCodeFn        func(ctx context.Context, code string) (*safeCode, error)
-	parseBindTicketFn      func(ctx context.Context, code string) (*bindTicket, error)
-	generateBindTicketFn   func(ctx context.Context, ticket bindTicket) (string, error)
-	consumeBindTicketFn    func(ctx context.Context, code string) error
-	parseReauthTicketFn    func(ctx context.Context, code string) (*reauthTicket, error)
-	generateReauthTicketFn func(ctx context.Context, ticket reauthTicket) (string, error)
-	consumeReauthTicketFn  func(ctx context.Context, code string) error
+	redis                      *redis.Manager
+	logger                     *logger.Manager
+	db                         *gorm.DB
+	userRepo                   repo.UserRepo
+	identityRepo               repo.UserIdentityRepo
+	passkeyRepo                repo.UserPasskeyRepo
+	totp                       totp.Generator
+	authRepo                   repo.AuthRepo
+	menuRepo                   repo.MenuRepo
+	config                     config.AdminConfig
+	request                    *resty.Client
+	notify                     *notify.Manager
+	generateSafeCodeFn         func(ctx context.Context, safeCode safeCode) (string, error)
+	parseSafeCodeFn            func(ctx context.Context, code string) (*safeCode, error)
+	parseBindTicketFn          func(ctx context.Context, code string) (*bindTicket, error)
+	generateBindTicketFn       func(ctx context.Context, ticket bindTicket) (string, error)
+	consumeBindTicketFn        func(ctx context.Context, code string) error
+	parseReauthTicketFn        func(ctx context.Context, code string) (*reauthTicket, error)
+	takeReauthTicketFn         func(ctx context.Context, code string, userID uint, action string) (*reauthTicket, error)
+	generateReauthTicketFn     func(ctx context.Context, ticket reauthTicket) (string, error)
+	consumeReauthTicketFn      func(ctx context.Context, code string) error
+	generatePasskeyChallengeFn func(ctx context.Context, challenge passkeyChallenge) (string, error)
 }
 
 // OauthUrl retrieves the OAuth URL.
@@ -302,54 +309,30 @@ func (a authService) TotpKey(ctx context.Context, userID uint) (key, qrCode stri
 	return
 }
 
-// DisableTfa disables TFA.
-//
-// Parameters:
-//   - userID: User ID
-//   - totpCode: TOTP code
-//
-// Returns:
-//   - errCode: Error code
-//   - err: Error message
-func (a authService) DisableTfa(ctx context.Context, userID uint, totpCode string) (errCode int, err error) {
-	// Check if safe code is empty
-	if totpCode == "" {
-		errCode = e.TotpCodeCanNotBeNull
-		return
+// DisableTfa disables TFA after the high-risk reauth check succeeds.
+func (a authService) DisableTfa(ctx context.Context, userID uint, reauthTicket string) (errCode int, err error) {
+	if _, errCode, err = a.validateReauthTicket(ctx, reauthTicket, userID); errCode != e.SUCCESS {
+		return errCode, err
 	}
 
-	var user *system.User
-	// Get user information
-	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
-	if user == nil {
-		errCode = e.UserNotFound
-		return
-	}
-
-	// Verify TOTP code
-	if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
-		errCode = e.InvalidTotpCode
-		return
+	if _, errCode, err = a.activeUserByID(ctx, userID); errCode != e.SUCCESS {
+		return errCode, err
 	}
 
 	err = a.userRepo.UpdateTotpStatus(ctx, &system.User{Model: gorm.Model{ID: userID}, TotpEnabled: false})
 	if err != nil {
-		errCode = e.ERROR
+		return e.ERROR, err
 	}
 
-	return
+	if err = a.consumeReauthTicket(ctx, reauthTicket); err != nil && a.logger != nil {
+		a.logger.Error(ctx, "failed to consume reauth ticket after disabling tfa", zap.Error(err))
+	}
+
+	return e.SUCCESS, nil
 }
 
-// EnableTfa enables TFA.
-//
-// Parameters:
-//   - userID: User ID
-//   - totpCode: TOTP code
-//
-// Returns:
-//   - errCode: Error code
-//   - err: Error message
-func (a authService) EnableTfa(ctx context.Context, userID uint, totpCode string, totpKey string) (errCode int, err error) {
+// EnableTfa enables TFA after the high-risk reauth check succeeds.
+func (a authService) EnableTfa(ctx context.Context, userID uint, reauthTicket, totpCode string, totpKey string) (errCode int, err error) {
 	// Check if totpKey is empty
 	if totpKey == "" {
 		errCode = e.TotpKeyCanNotBeNull
@@ -362,6 +345,13 @@ func (a authService) EnableTfa(ctx context.Context, userID uint, totpCode string
 		return
 	}
 
+	if _, errCode, err = a.validateReauthTicket(ctx, reauthTicket, userID); errCode != e.SUCCESS {
+		return errCode, err
+	}
+	if _, errCode, err = a.activeUserByID(ctx, userID); errCode != e.SUCCESS {
+		return errCode, err
+	}
+
 	// Verify TOTP code
 	if !a.totp.VerifyTOTPCode(totpCode, totpKey, 1) {
 		errCode = e.InvalidTotpCode
@@ -370,25 +360,18 @@ func (a authService) EnableTfa(ctx context.Context, userID uint, totpCode string
 
 	err = a.userRepo.Update(ctx, &system.User{Model: gorm.Model{ID: userID}, TotpEnabled: true, TotpKey: totpKey})
 	if err != nil {
-		errCode = e.ERROR
+		return e.ERROR, err
 	}
 
-	return
+	if err = a.consumeReauthTicket(ctx, reauthTicket); err != nil && a.logger != nil {
+		a.logger.Error(ctx, "failed to consume reauth ticket after enabling tfa", zap.Error(err))
+	}
+
+	return e.SUCCESS, nil
 }
 
-// UpdateIdentifier updates user email/phone identifier.
-//
-// Parameters:
-//   - userID: User ID
-//   - totpCode: TOTP code
-//   - password: Password for request validation when TFA is disabled
-//   - email: New email
-//   - phone: New phone
-//
-// Returns:
-//   - errCode: Error code
-//   - err: Error message
-func (a authService) UpdateIdentifier(ctx context.Context, userID uint, totpCode, password, email, phone string) (errCode int, err error) {
+// UpdateIdentifier updates user email/phone identifier after the high-risk reauth check succeeds.
+func (a authService) UpdateIdentifier(ctx context.Context, userID uint, reauthTicket, email, phone string) (errCode int, err error) {
 	email = normalizeEmail(email)
 	phone = normalizePhone(phone)
 
@@ -407,44 +390,13 @@ func (a authService) UpdateIdentifier(ctx context.Context, userID uint, totpCode
 		return
 	}
 
-	var user *system.User
-	// Get user information
-	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
-	if user == nil {
-		errCode = e.UserNotFound
-		return
+	if _, errCode, err = a.validateReauthTicket(ctx, reauthTicket, userID); errCode != e.SUCCESS {
+		return errCode, err
 	}
 
-	if user.TotpEnabled {
-		// Check if TOTP code is empty
-		if totpCode == "" {
-			errCode = e.TotpCodeCanNotBeNull
-			return
-		}
-
-		// Verify TOTP code
-		if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
-			errCode = e.InvalidTotpCode
-			return
-		}
-	} else {
-		// Check if password is empty
-		if password == "" {
-			errCode = e.IdentifierOrPasswordCanNotBeNull
-			return
-		}
-
-		// Verify password
-		matched, verifyErr := pwd.VerifyCredential(user.Password, password)
-		if verifyErr != nil {
-			errCode = e.ERROR
-			err = verifyErr
-			return
-		}
-		if !matched {
-			errCode = e.IdentifierOrPasswordFail
-			return
-		}
+	user, errCode, err := a.activeUserByID(ctx, userID)
+	if errCode != e.SUCCESS {
+		return errCode, err
 	}
 
 	if email != "" {
@@ -475,79 +427,41 @@ func (a authService) UpdateIdentifier(ctx context.Context, userID uint, totpCode
 
 	err = a.userRepo.UpdateIdentifier(ctx, &system.User{Model: gorm.Model{ID: userID}, Email: email, Phone: phone})
 	if err != nil {
-		errCode = e.ERROR
-		return
+		return e.ERROR, err
 	}
 
-	errCode = e.SUCCESS
+	if err = a.consumeReauthTicket(ctx, reauthTicket); err != nil && a.logger != nil {
+		a.logger.Error(ctx, "failed to consume reauth ticket after updating identifier", zap.Error(err))
+	}
 
-	return
+	return e.SUCCESS, nil
 }
 
-// UpdatePassword updates the password.
-//
-// Parameters:
-//   - userID: User ID
-//   - totpCode: TOTP code
-//   - oldPassword: Old password
-//   - password: New password
-//
-// Returns:
-//   - errCode: Error code
-//   - err: Error message
-func (a authService) UpdatePassword(ctx context.Context, userID uint, totpCode, oldPassword, password string) (errCode int, err error) {
+// UpdatePassword updates the password after the high-risk reauth check succeeds.
+func (a authService) UpdatePassword(ctx context.Context, userID uint, reauthTicket, password string) (errCode int, err error) {
 	// Check if password is empty
 	if password == "" {
 		errCode = e.PasswordCanNotBeNull
 		return
 	}
 
-	var user *system.User
-	// Get user information
-	user, err = a.userRepo.Detail(ctx, &system.User{Model: gorm.Model{ID: userID}})
-	if user == nil {
-		errCode = e.UserNotFound
-		return
+	if _, errCode, err = a.validateReauthTicket(ctx, reauthTicket, userID); errCode != e.SUCCESS {
+		return errCode, err
 	}
-
-	if user.TotpEnabled {
-		// Check if TOTP code is empty
-		if totpCode == "" {
-			errCode = e.TotpCodeCanNotBeNull
-			return
-		}
-
-		// Verify TOTP code
-		if !a.totp.VerifyTOTPCode(totpCode, user.TotpKey, 1) {
-			errCode = e.InvalidTotpCode
-			return
-		}
-	} else {
-		// Check if old password is empty
-		if oldPassword == "" {
-			errCode = e.IdentifierOrPasswordCanNotBeNull
-			return
-		}
-
-		// Verify old password
-		matched, verifyErr := pwd.VerifyCredential(user.Password, oldPassword)
-		if verifyErr != nil {
-			errCode = e.ERROR
-			err = verifyErr
-			return
-		}
-		if !matched {
-			errCode = e.IdentifierOrPasswordFail
-			return
-		}
+	if _, errCode, err = a.activeUserByID(ctx, userID); errCode != e.SUCCESS {
+		return errCode, err
 	}
 
 	err = a.userRepo.Update(ctx, &system.User{Model: gorm.Model{ID: userID}, Password: password})
 	if err != nil {
-		errCode = e.ERROR
+		return e.ERROR, err
 	}
 
-	return
+	if err = a.consumeReauthTicket(ctx, reauthTicket); err != nil && a.logger != nil {
+		a.logger.Error(ctx, "failed to consume reauth ticket after updating password", zap.Error(err))
+	}
+
+	return e.SUCCESS, nil
 }
 
 // ResetPassword resets the password.

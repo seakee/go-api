@@ -12,7 +12,8 @@ import (
 func (h handler) BeginPasskeyRegistration() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			DisplayName string `json:"display_name"`
+			ReauthTicket string `json:"reauth_ticket" binding:"required"`
+			DisplayName  string `json:"display_name"`
 		}
 
 		errCode := e.InvalidParams
@@ -20,8 +21,8 @@ func (h handler) BeginPasskeyRegistration() gin.HandlerFunc {
 		var result system.PasskeyOptionsResult
 
 		userID, _ := c.Get("user_id")
-		if err = c.ShouldBindJSON(&req); errors.Is(err, io.EOF) || err == nil {
-			result, errCode, err = h.service.BeginPasskeyRegistration(h.Context(c), userID.(uint), req.DisplayName)
+		if err = c.ShouldBindJSON(&req); err == nil {
+			result, errCode, err = h.service.BeginPasskeyRegistration(h.Context(c), userID.(uint), req.ReauthTicket, req.DisplayName)
 		}
 
 		h.I18n.JSON(c, errCode, result, err)
@@ -62,6 +63,21 @@ func (h handler) BeginPasskeyLogin() gin.HandlerFunc {
 	}
 }
 
+func (h handler) BeginPasskeyReauth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		errCode := e.InvalidParams
+		var err error
+		var result system.PasskeyOptionsResult
+
+		userID, _ := c.Get("user_id")
+		if err = c.ShouldBindJSON(&struct{}{}); errors.Is(err, io.EOF) || err == nil {
+			result, errCode, err = h.service.BeginPasskeyReauth(h.Context(c), userID.(uint))
+		}
+
+		h.I18n.JSON(c, errCode, result, err)
+	}
+}
+
 func (h handler) FinishPasskeyLogin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -75,6 +91,26 @@ func (h handler) FinishPasskeyLogin() gin.HandlerFunc {
 
 		if err = c.ShouldBindJSON(&req); err == nil {
 			result, errCode, err = h.service.FinishPasskeyLogin(h.Context(c), req.ChallengeID, req.Credential)
+		}
+
+		h.I18n.JSON(c, errCode, result, err)
+	}
+}
+
+func (h handler) FinishPasskeyReauth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			ChallengeID string                   `json:"challenge_id" binding:"required"`
+			Credential  system.PasskeyCredential `json:"credential" binding:"required"`
+		}
+
+		errCode := e.InvalidParams
+		var err error
+		var result system.ReauthResult
+
+		userID, _ := c.Get("user_id")
+		if err = c.ShouldBindJSON(&req); err == nil {
+			result, errCode, err = h.service.FinishPasskeyReauth(h.Context(c), userID.(uint), req.ChallengeID, req.Credential)
 		}
 
 		h.I18n.JSON(c, errCode, result, err)

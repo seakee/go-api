@@ -24,6 +24,7 @@ import (
 const (
 	passkeyActionRegister = "register"
 	passkeyActionLogin    = "login"
+	passkeyActionReauth   = "reauth"
 )
 
 type PasskeyOptionsResult struct {
@@ -71,17 +72,17 @@ func (u passkeyWebAuthnUser) WebAuthnCredentials() []webauthn.Credential {
 	return u.credentials
 }
 
-func (a authService) BeginPasskeyRegistration(ctx context.Context, userID uint, displayName string) (result PasskeyOptionsResult, errCode int, err error) {
+func (a authService) BeginPasskeyRegistration(ctx context.Context, userID uint, reauthTicket, displayName string) (result PasskeyOptionsResult, errCode int, err error) {
 	if err = a.ensurePasskeyConfig(); err != nil {
 		return result, e.ERROR, err
 	}
-
-	user, err := a.userRepo.DetailByID(ctx, userID)
-	if err != nil {
-		return result, e.ERROR, err
+	if _, errCode, err = a.consumeValidatedReauthTicket(ctx, reauthTicket, userID); errCode != e.SUCCESS {
+		return result, errCode, err
 	}
-	if user == nil || user.Status != 1 {
-		return result, e.UserNotFound, nil
+
+	user, errCode, err := a.activeUserByID(ctx, userID)
+	if errCode != e.SUCCESS {
+		return result, errCode, err
 	}
 
 	passkeys, err := a.passkeyRepo.ListByUserID(ctx, userID)
@@ -265,6 +266,60 @@ func (a authService) BeginPasskeyLogin(ctx context.Context) (result PasskeyOptio
 	return result, e.SUCCESS, nil
 }
 
+func (a authService) BeginPasskeyReauth(ctx context.Context, userID uint) (result PasskeyOptionsResult, errCode int, err error) {
+	if err = a.ensurePasskeyConfig(); err != nil {
+		return result, e.ERROR, err
+	}
+
+	user, errCode, err := a.activeUserByID(ctx, userID)
+	if errCode != e.SUCCESS {
+		return result, errCode, err
+	}
+
+	passkeys, err := a.passkeyRepo.ListByUserID(ctx, userID)
+	if err != nil {
+		return result, e.ERROR, err
+	}
+	if len(passkeys) == 0 {
+		return result, e.PasskeyCredentialNotFound, nil
+	}
+
+	waUser := buildPasskeyWebAuthnUser(user, passkeys, "")
+	wa, err := a.getWebAuthn()
+	if err != nil {
+		return result, e.ERROR, err
+	}
+
+	options, session, err := wa.BeginLogin(
+		waUser,
+		passkeyDiscoverableLoginOptions(a.config.WebAuthn.UserVerification)...,
+	)
+	if err != nil {
+		return result, e.PasskeyVerificationFailed, err
+	}
+
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		return result, e.ERROR, err
+	}
+
+	challengeID, err := a.generatePasskeyChallenge(ctx, passkeyChallenge{
+		Action:      passkeyActionReauth,
+		UserID:      userID,
+		SessionData: sessionData,
+	})
+	if err != nil {
+		return result, e.ERROR, err
+	}
+
+	result = PasskeyOptionsResult{
+		ChallengeID: challengeID,
+		Options:     options,
+	}
+
+	return result, e.SUCCESS, nil
+}
+
 func (a authService) FinishPasskeyLogin(ctx context.Context, challengeID string, credential PasskeyCredential) (token AccessToken, errCode int, err error) {
 	challengeID = strings.TrimSpace(challengeID)
 	if challengeID == "" {
@@ -349,6 +404,87 @@ func (a authService) FinishPasskeyLogin(ctx context.Context, challengeID string,
 	}
 
 	return token, e.SUCCESS, nil
+}
+
+func (a authService) FinishPasskeyReauth(ctx context.Context, userID uint, challengeID string, credential PasskeyCredential) (result ReauthResult, errCode int, err error) {
+	challengeID = strings.TrimSpace(challengeID)
+	if challengeID == "" {
+		return result, e.InvalidPasskeyChallenge, nil
+	}
+
+	challenge, err := a.parsePasskeyChallenge(ctx, challengeID)
+	if err != nil {
+		if errors.Is(err, redigo.ErrNil) {
+			return result, e.PasskeyChallengeExpired, nil
+		}
+		return result, e.ERROR, err
+	}
+	defer func() {
+		if consumeErr := a.consumePasskeyChallenge(ctx, challengeID); consumeErr != nil && a.logger != nil {
+			a.logger.Error(ctx, "consume passkey reauth challenge failed", zap.Error(consumeErr))
+		}
+	}()
+
+	if challenge == nil || challenge.Action != passkeyActionReauth || challenge.UserID != userID {
+		return result, e.InvalidPasskeyChallenge, nil
+	}
+
+	session, err := parsePasskeySessionData(challenge.SessionData)
+	if err != nil {
+		return result, e.InvalidPasskeyChallenge, err
+	}
+	if passkeySessionExpired(session) {
+		return result, e.PasskeyChallengeExpired, nil
+	}
+
+	user, errCode, err := a.activeUserByID(ctx, userID)
+	if errCode != e.SUCCESS {
+		return result, errCode, err
+	}
+
+	passkeys, err := a.passkeyRepo.ListByUserID(ctx, userID)
+	if err != nil {
+		return result, e.ERROR, err
+	}
+	if len(passkeys) == 0 {
+		return result, e.PasskeyCredentialNotFound, nil
+	}
+
+	waUser := buildPasskeyWebAuthnUser(user, passkeys, "")
+	wa, err := a.getWebAuthn()
+	if err != nil {
+		return result, e.ERROR, err
+	}
+
+	payload, err := marshalPasskeyCredentialPayload(credential)
+	if err != nil {
+		return result, e.InvalidParams, err
+	}
+
+	parsed, err := protocol.ParseCredentialRequestResponseBody(bytes.NewReader(payload))
+	if err != nil {
+		return result, e.PasskeyVerificationFailed, err
+	}
+
+	verifiedCredential, err := wa.ValidateLogin(waUser, *session, parsed)
+	if err != nil {
+		return result, e.PasskeyVerificationFailed, err
+	}
+
+	credentialID := encodeBytesToBase64URL(verifiedCredential.ID)
+	passkey := findPasskeyByCredentialID(passkeys, credentialID)
+	if passkey == nil {
+		return result, e.PasskeyCredentialNotFound, nil
+	}
+
+	if err = a.passkeyRepo.UpdateSignCount(ctx, passkey.ID, verifiedCredential.Authenticator.SignCount); err != nil {
+		return result, e.ERROR, err
+	}
+	if err = a.passkeyRepo.UpdateLastUsedAt(ctx, passkey.ID, time.Now()); err != nil {
+		return result, e.ERROR, err
+	}
+
+	return a.issueHighRiskReauthTicket(ctx, userID)
 }
 
 func (a authService) ListPasskeys(ctx context.Context, userID uint) (list []PasskeyItem, errCode int, err error) {
@@ -503,6 +639,16 @@ func passkeyDiscoverableLoginOptions(userVerification string) []webauthn.LoginOp
 	return []webauthn.LoginOption{
 		webauthn.WithUserVerification(parseUserVerificationRequirement(userVerification)),
 	}
+}
+
+func findPasskeyByCredentialID(passkeys []systemModel.UserPasskey, credentialID string) *systemModel.UserPasskey {
+	for i := range passkeys {
+		if passkeys[i].CredentialID == credentialID {
+			return &passkeys[i]
+		}
+	}
+
+	return nil
 }
 
 func (a authService) resolvePasskeyLoginUser(ctx context.Context, rawID, userHandle []byte) (user *systemModel.User, passkey *systemModel.UserPasskey, waUser passkeyWebAuthnUser, errCode int, err error) {

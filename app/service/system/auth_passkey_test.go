@@ -259,6 +259,109 @@ func TestAuthService_DeletePasskey(t *testing.T) {
 	})
 }
 
+func TestAuthService_BeginPasskeyRegistration(t *testing.T) {
+	newSvc := func() *authService {
+		return &authService{
+			config: config.AdminConfig{
+				WebAuthn: config.WebAuthnConfig{
+					RPID:              "example.com",
+					RPDisplayName:     "Example",
+					RPOrigins:         []string{"https://example.com"},
+					ChallengeExpireIn: 180,
+				},
+			},
+			userRepo: &mockUserRepo{
+				DetailByIDFunc: func(ctx context.Context, id uint) (*systemModel.User, error) {
+					return &systemModel.User{
+						Model:    gorm.Model{ID: id},
+						Status:   1,
+						UserName: "alice",
+						Email:    "alice@example.com",
+					}, nil
+				},
+			},
+			passkeyRepo: &mockUserPasskeyRepo{
+				ListByUserIDFunc: func(ctx context.Context, userID uint) ([]systemModel.UserPasskey, error) {
+					return nil, nil
+				},
+			},
+		}
+	}
+
+	t.Run("consumes reauth ticket before issuing challenge", func(t *testing.T) {
+		consumed := false
+		svc := newSvc()
+		svc.takeReauthTicketFn = func(ctx context.Context, code string, userID uint, action string) (*reauthTicket, error) {
+			if code != "reauth-code" {
+				t.Fatalf("takeReauthTicket() code = %s, want reauth-code", code)
+			}
+			if userID != 7 {
+				t.Fatalf("takeReauthTicket() userID = %d, want 7", userID)
+			}
+			if action != reauthActionHighRisk {
+				t.Fatalf("takeReauthTicket() action = %s, want %s", action, reauthActionHighRisk)
+			}
+			consumed = true
+			return &reauthTicket{UserID: userID, Action: action}, nil
+		}
+		svc.generatePasskeyChallengeFn = func(ctx context.Context, challenge passkeyChallenge) (string, error) {
+			if !consumed {
+				t.Fatalf("generatePasskeyChallenge() called before ticket consumption")
+			}
+			if challenge.Action != passkeyActionRegister {
+				t.Fatalf("challenge.Action = %s, want %s", challenge.Action, passkeyActionRegister)
+			}
+			if challenge.UserID != 7 {
+				t.Fatalf("challenge.UserID = %d, want 7", challenge.UserID)
+			}
+			if challenge.DisplayName != "Security Key" {
+				t.Fatalf("challenge.DisplayName = %s, want Security Key", challenge.DisplayName)
+			}
+			if len(challenge.SessionData) == 0 {
+				t.Fatalf("challenge.SessionData should not be empty")
+			}
+			return "challenge-1", nil
+		}
+
+		result, errCode, err := svc.BeginPasskeyRegistration(context.Background(), 7, "reauth-code", "Security Key")
+		if err != nil {
+			t.Fatalf("BeginPasskeyRegistration() error = %v, want nil", err)
+		}
+		if errCode != e.SUCCESS {
+			t.Fatalf("BeginPasskeyRegistration() errCode = %d, want %d", errCode, e.SUCCESS)
+		}
+		if result.ChallengeID != "challenge-1" {
+			t.Fatalf("BeginPasskeyRegistration() challengeID = %s, want challenge-1", result.ChallengeID)
+		}
+		if !consumed {
+			t.Fatalf("BeginPasskeyRegistration() should consume reauth ticket before success")
+		}
+	})
+
+	t.Run("failed challenge creation still keeps ticket consumed", func(t *testing.T) {
+		consumed := false
+		svc := newSvc()
+		svc.takeReauthTicketFn = func(ctx context.Context, code string, userID uint, action string) (*reauthTicket, error) {
+			consumed = true
+			return &reauthTicket{UserID: userID, Action: action}, nil
+		}
+		svc.generatePasskeyChallengeFn = func(ctx context.Context, challenge passkeyChallenge) (string, error) {
+			return "", errors.New("store challenge failed")
+		}
+
+		_, errCode, err := svc.BeginPasskeyRegistration(context.Background(), 7, "reauth-code", "Security Key")
+		if err == nil {
+			t.Fatalf("BeginPasskeyRegistration() error = nil, want non-nil")
+		}
+		if errCode != e.ERROR {
+			t.Fatalf("BeginPasskeyRegistration() errCode = %d, want %d", errCode, e.ERROR)
+		}
+		if !consumed {
+			t.Fatalf("BeginPasskeyRegistration() should consume reauth ticket before challenge generation")
+		}
+	})
+}
+
 func TestAuthService_ListPasskeys(t *testing.T) {
 	t.Run("returns user not found when parent user is missing", func(t *testing.T) {
 		listCalled := false
