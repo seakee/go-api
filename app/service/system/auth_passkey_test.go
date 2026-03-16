@@ -564,7 +564,7 @@ func TestAuthService_getWebAuthn_UsesChallengeExpireTimeout(t *testing.T) {
 		config: config.AdminConfig{
 			WebAuthn: config.WebAuthnConfig{
 				RPID:              "localhost",
-				RPDisplayName:     "Go API Admin",
+				RPDisplayName:     "Dudu Admin",
 				RPOrigins:         []string{"http://localhost:3000"},
 				ChallengeExpireIn: 180,
 			},
@@ -593,7 +593,7 @@ func TestAuthService_getWebAuthn_UsesChallengeExpireTimeout(t *testing.T) {
 func TestPasskeyRegistrationOptions_RequireResidentKey(t *testing.T) {
 	wa, err := webauthn.New(&webauthn.Config{
 		RPID:          "localhost",
-		RPDisplayName: "Go API Admin",
+		RPDisplayName: "Dudu Admin",
 		RPOrigins:     []string{"http://localhost:3000"},
 	})
 	if err != nil {
@@ -623,7 +623,7 @@ func TestPasskeyRegistrationOptions_RequireResidentKey(t *testing.T) {
 func TestPasskeyDiscoverableLoginOptions(t *testing.T) {
 	wa, err := webauthn.New(&webauthn.Config{
 		RPID:          "localhost",
-		RPDisplayName: "Go API Admin",
+		RPDisplayName: "Dudu Admin",
 		RPOrigins:     []string{"http://localhost:3000"},
 	})
 	if err != nil {

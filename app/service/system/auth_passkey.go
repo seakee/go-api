@@ -466,7 +466,7 @@ func (a authService) getWebAuthn() (*webauthn.WebAuthn, error) {
 
 	return webauthn.New(&webauthn.Config{
 		RPID:          strings.TrimSpace(a.config.WebAuthn.RPID),
-		RPDisplayName: firstNonEmpty(strings.TrimSpace(a.config.WebAuthn.RPDisplayName), "Go API Admin"),
+		RPDisplayName: firstNonEmpty(strings.TrimSpace(a.config.WebAuthn.RPDisplayName), "Dudu Admin"),
 		RPOrigins:     a.config.WebAuthn.RPOrigins,
 		Timeouts: webauthn.TimeoutsConfig{
 			Login: webauthn.TimeoutConfig{
