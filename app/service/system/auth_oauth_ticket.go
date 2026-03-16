@@ -2,9 +2,13 @@ package system
 
 import (
 	"context"
+	"strings"
 
+	"github.com/seakee/go-api/app/pkg/e"
 	"github.com/sk-pkg/util"
 )
+
+const reauthActionHighRisk = "high_risk_reauth"
 
 type bindTicket struct {
 	Provider        string        `json:"provider"`
@@ -88,4 +92,20 @@ func (a authService) consumeReauthTicket(ctx context.Context, code string) error
 
 	_, err := a.redis.DelWithContext(ctx, reauthTicketPrefix+code)
 	return err
+}
+
+func (a authService) validateReauthTicket(ctx context.Context, code string, userID uint) (*reauthTicket, int, error) {
+	if strings.TrimSpace(code) == "" {
+		return nil, e.ReauthTicketCanNotBeNull, nil
+	}
+
+	ticket, err := a.parseReauthTicket(ctx, code)
+	if err != nil || ticket == nil || ticket.Action != reauthActionHighRisk || ticket.UserID == 0 {
+		return nil, e.InvalidReauthTicket, err
+	}
+	if userID != 0 && ticket.UserID != userID {
+		return nil, e.InvalidReauthTicket, nil
+	}
+
+	return ticket, e.SUCCESS, nil
 }

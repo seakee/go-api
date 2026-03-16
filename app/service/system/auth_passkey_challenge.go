@@ -11,7 +11,6 @@ import (
 type passkeyChallenge struct {
 	Action      string          `json:"action"`
 	UserID      uint            `json:"user_id,omitempty"`
-	Identifier  string          `json:"identifier,omitempty"`
 	ChallengeID string          `json:"challenge_id"`
 	SessionData json.RawMessage `json:"session_data"`
 	DisplayName string          `json:"display_name,omitempty"`

@@ -97,10 +97,7 @@ func (a authService) BeginPasskeyRegistration(ctx context.Context, userID uint, 
 
 	options, session, err := wa.BeginRegistration(
 		waUser,
-		webauthn.WithAuthenticatorSelection(protocol.AuthenticatorSelection{
-			UserVerification: parseUserVerificationRequirement(a.config.WebAuthn.UserVerification),
-		}),
-		webauthn.WithConveyancePreference(protocol.PreferNoAttestation),
+		passkeyRegistrationOptions(a.config.WebAuthn.UserVerification)...,
 	)
 	if err != nil {
 		return result, e.PasskeyRegistrationFailed, err
@@ -156,7 +153,7 @@ func (a authService) FinishPasskeyRegistration(ctx context.Context, userID uint,
 	if err != nil {
 		return result, e.InvalidPasskeyChallenge, err
 	}
-	if time.Now().After(session.Expires) {
+	if passkeySessionExpired(session) {
 		return result, e.PasskeyChallengeExpired, nil
 	}
 
@@ -232,35 +229,9 @@ func (a authService) FinishPasskeyRegistration(ctx context.Context, userID uint,
 	return mapPasskeyItem(*passkey), e.SUCCESS, nil
 }
 
-func (a authService) BeginPasskeyLogin(ctx context.Context, identifier string) (result PasskeyOptionsResult, errCode int, err error) {
+func (a authService) BeginPasskeyLogin(ctx context.Context) (result PasskeyOptionsResult, errCode int, err error) {
 	if err = a.ensurePasskeyConfig(); err != nil {
 		return result, e.ERROR, err
-	}
-
-	identifier = strings.TrimSpace(identifier)
-	if identifier == "" {
-		return result, e.IdentifierCantBeNull, nil
-	}
-
-	user, err := a.userRepo.DetailByIdentifier(ctx, identifier)
-	if err != nil {
-		return result, e.ERROR, err
-	}
-	if user == nil || user.Status != 1 {
-		return result, e.UserNotFound, nil
-	}
-
-	passkeys, err := a.passkeyRepo.ListByUserID(ctx, user.ID)
-	if err != nil {
-		return result, e.ERROR, err
-	}
-	if len(passkeys) == 0 {
-		return result, e.PasskeyCredentialNotFound, nil
-	}
-
-	waUser := buildPasskeyWebAuthnUser(user, passkeys, "")
-	if len(waUser.credentials) == 0 {
-		return result, e.PasskeyCredentialNotFound, nil
 	}
 
 	wa, err := a.getWebAuthn()
@@ -268,10 +239,7 @@ func (a authService) BeginPasskeyLogin(ctx context.Context, identifier string) (
 		return result, e.ERROR, err
 	}
 
-	options, session, err := wa.BeginLogin(
-		waUser,
-		webauthn.WithUserVerification(parseUserVerificationRequirement(a.config.WebAuthn.UserVerification)),
-	)
+	options, session, err := wa.BeginDiscoverableLogin(passkeyDiscoverableLoginOptions(a.config.WebAuthn.UserVerification)...)
 	if err != nil {
 		return result, e.PasskeyLoginFailed, err
 	}
@@ -283,8 +251,6 @@ func (a authService) BeginPasskeyLogin(ctx context.Context, identifier string) (
 
 	challengeID, err := a.generatePasskeyChallenge(ctx, passkeyChallenge{
 		Action:      passkeyActionLogin,
-		UserID:      user.ID,
-		Identifier:  identifier,
 		SessionData: sessionData,
 	})
 	if err != nil {
@@ -326,34 +292,8 @@ func (a authService) FinishPasskeyLogin(ctx context.Context, challengeID string,
 	if err != nil {
 		return token, e.InvalidPasskeyChallenge, err
 	}
-	if time.Now().After(session.Expires) {
+	if passkeySessionExpired(session) {
 		return token, e.PasskeyChallengeExpired, nil
-	}
-
-	user, err := a.userRepo.DetailByID(ctx, challenge.UserID)
-	if err != nil {
-		return token, e.ERROR, err
-	}
-	if user == nil || user.Status != 1 {
-		return token, e.UserNotFound, nil
-	}
-
-	passkeys, err := a.passkeyRepo.ListByUserID(ctx, user.ID)
-	if err != nil {
-		return token, e.ERROR, err
-	}
-	if len(passkeys) == 0 {
-		return token, e.PasskeyCredentialNotFound, nil
-	}
-
-	waUser := buildPasskeyWebAuthnUser(user, passkeys, "")
-	if len(waUser.credentials) == 0 {
-		return token, e.PasskeyCredentialNotFound, nil
-	}
-
-	wa, err := a.getWebAuthn()
-	if err != nil {
-		return token, e.ERROR, err
 	}
 
 	payload, err := marshalPasskeyCredentialPayload(credential)
@@ -366,18 +306,29 @@ func (a authService) FinishPasskeyLogin(ctx context.Context, challengeID string,
 		return token, e.PasskeyVerificationFailed, err
 	}
 
-	verifiedCredential, err := wa.ValidateLogin(waUser, *session, parsed)
+	user, passkey, waUser, errCode, err := a.resolvePasskeyLoginUser(ctx, parsed.RawID, parsed.Response.UserHandle)
+	if errCode != e.SUCCESS {
+		return token, errCode, err
+	}
+
+	wa, err := a.getWebAuthn()
+	if err != nil {
+		return token, e.ERROR, err
+	}
+
+	_, verifiedCredential, err := wa.ValidatePasskeyLogin(func(rawID, userHandle []byte) (webauthn.User, error) {
+		return waUser, nil
+	}, *session, parsed)
 	if err != nil {
 		return token, e.PasskeyVerificationFailed, err
 	}
 
 	credentialID := encodeBytesToBase64URL(verifiedCredential.ID)
-	passkey, err := a.passkeyRepo.DetailByCredentialID(ctx, credentialID)
-	if err != nil {
-		return token, e.ERROR, err
-	}
 	if passkey == nil || passkey.UserID != user.ID {
 		return token, e.PasskeyCredentialNotFound, nil
+	}
+	if credentialID != passkey.CredentialID {
+		return token, e.PasskeyVerificationFailed, nil
 	}
 
 	if err = a.passkeyRepo.UpdateSignCount(ctx, passkey.ID, verifiedCredential.Authenticator.SignCount); err != nil {
@@ -426,9 +377,12 @@ func (a authService) ListPasskeys(ctx context.Context, userID uint) (list []Pass
 	return list, e.SUCCESS, nil
 }
 
-func (a authService) DeletePasskey(ctx context.Context, userID, passkeyID uint) (errCode int, err error) {
+func (a authService) DeletePasskey(ctx context.Context, userID, passkeyID uint, reauthTicketCode string) (errCode int, err error) {
 	if passkeyID == 0 {
 		return e.PasskeyCanNotBeNull, nil
+	}
+	if _, errCode, err = a.validateReauthTicket(ctx, reauthTicketCode, userID); errCode != e.SUCCESS {
+		return errCode, err
 	}
 
 	passkey, err := a.passkeyRepo.DetailByIDAndUserID(ctx, passkeyID, userID)
@@ -452,6 +406,9 @@ func (a authService) DeletePasskey(ctx context.Context, userID, passkeyID uint) 
 			return e.PasskeyCredentialNotFound, nil
 		}
 		return e.ERROR, err
+	}
+	if err = a.consumeReauthTicket(ctx, reauthTicketCode); err != nil && a.logger != nil {
+		a.logger.Error(ctx, "failed to consume reauth ticket after deleting passkey", zap.Error(err))
 	}
 
 	return e.SUCCESS, nil
@@ -505,11 +462,92 @@ func (a authService) ensurePasskeyConfig() error {
 }
 
 func (a authService) getWebAuthn() (*webauthn.WebAuthn, error) {
+	timeout := time.Second * time.Duration(a.config.WebAuthn.ChallengeExpireIn)
+
 	return webauthn.New(&webauthn.Config{
 		RPID:          strings.TrimSpace(a.config.WebAuthn.RPID),
 		RPDisplayName: firstNonEmpty(strings.TrimSpace(a.config.WebAuthn.RPDisplayName), "Go API Admin"),
 		RPOrigins:     a.config.WebAuthn.RPOrigins,
+		Timeouts: webauthn.TimeoutsConfig{
+			Login: webauthn.TimeoutConfig{
+				Enforce: true,
+				Timeout: timeout,
+			},
+			Registration: webauthn.TimeoutConfig{
+				Enforce: true,
+				Timeout: timeout,
+			},
+		},
 	})
+}
+
+func passkeySessionExpired(session *webauthn.SessionData) bool {
+	if session == nil || session.Expires.IsZero() {
+		return false
+	}
+
+	return time.Now().After(session.Expires)
+}
+
+func passkeyRegistrationOptions(userVerification string) []webauthn.RegistrationOption {
+	return []webauthn.RegistrationOption{
+		webauthn.WithAuthenticatorSelection(protocol.AuthenticatorSelection{
+			UserVerification: parseUserVerificationRequirement(userVerification),
+		}),
+		webauthn.WithResidentKeyRequirement(protocol.ResidentKeyRequirementRequired),
+		webauthn.WithConveyancePreference(protocol.PreferNoAttestation),
+	}
+}
+
+func passkeyDiscoverableLoginOptions(userVerification string) []webauthn.LoginOption {
+	return []webauthn.LoginOption{
+		webauthn.WithUserVerification(parseUserVerificationRequirement(userVerification)),
+	}
+}
+
+func (a authService) resolvePasskeyLoginUser(ctx context.Context, rawID, userHandle []byte) (user *systemModel.User, passkey *systemModel.UserPasskey, waUser passkeyWebAuthnUser, errCode int, err error) {
+	if len(rawID) == 0 {
+		return nil, nil, waUser, e.PasskeyVerificationFailed, errors.New("empty passkey credential id")
+	}
+
+	passkey, err = a.passkeyRepo.DetailByCredentialID(ctx, encodeBytesToBase64URL(rawID))
+	if err != nil {
+		return nil, nil, waUser, e.ERROR, err
+	}
+	if passkey == nil {
+		return nil, nil, waUser, e.PasskeyCredentialNotFound, nil
+	}
+
+	userID, err := decodePasskeyUserHandleBinary(userHandle)
+	if err != nil {
+		return nil, nil, waUser, e.PasskeyVerificationFailed, err
+	}
+	if passkey.UserID != userID {
+		return nil, nil, waUser, e.PasskeyVerificationFailed, nil
+	}
+
+	user, err = a.userRepo.DetailByID(ctx, userID)
+	if err != nil {
+		return nil, nil, waUser, e.ERROR, err
+	}
+	if user == nil || user.Status != 1 {
+		return nil, nil, waUser, e.UserNotFound, nil
+	}
+
+	passkeys, err := a.passkeyRepo.ListByUserID(ctx, userID)
+	if err != nil {
+		return nil, nil, waUser, e.ERROR, err
+	}
+	if len(passkeys) == 0 {
+		return nil, nil, waUser, e.PasskeyCredentialNotFound, nil
+	}
+
+	waUser = buildPasskeyWebAuthnUser(user, passkeys, "")
+	if len(waUser.credentials) == 0 {
+		return nil, nil, waUser, e.PasskeyCredentialNotFound, nil
+	}
+
+	return user, passkey, waUser, e.SUCCESS, nil
 }
 
 func buildPasskeyWebAuthnUser(user *systemModel.User, passkeys []systemModel.UserPasskey, displayName string) passkeyWebAuthnUser {
@@ -772,6 +810,14 @@ func encodePasskeyUserHandleBinary(userID uint) []byte {
 	buffer := make([]byte, 8)
 	binary.BigEndian.PutUint64(buffer, uint64(userID))
 	return buffer
+}
+
+func decodePasskeyUserHandleBinary(userHandle []byte) (uint, error) {
+	if len(userHandle) != 8 {
+		return 0, errors.New("invalid passkey user handle")
+	}
+
+	return uint(binary.BigEndian.Uint64(userHandle)), nil
 }
 
 func passkeyUserName(user *systemModel.User) string {

@@ -50,16 +50,12 @@ func (h handler) FinishPasskeyRegistration() gin.HandlerFunc {
 
 func (h handler) BeginPasskeyLogin() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var req struct {
-			Identifier string `json:"identifier" binding:"required"`
-		}
-
 		errCode := e.InvalidParams
 		var err error
 		var result system.PasskeyOptionsResult
 
-		if err = c.ShouldBindJSON(&req); err == nil {
-			result, errCode, err = h.service.BeginPasskeyLogin(h.Context(c), req.Identifier)
+		if err = c.ShouldBindJSON(&struct{}{}); errors.Is(err, io.EOF) || err == nil {
+			result, errCode, err = h.service.BeginPasskeyLogin(h.Context(c))
 		}
 
 		h.I18n.JSON(c, errCode, result, err)
@@ -96,7 +92,8 @@ func (h handler) Passkeys() gin.HandlerFunc {
 func (h handler) DeletePasskey() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
-			ID uint `json:"id" binding:"required"`
+			ID           uint   `json:"id" binding:"required"`
+			ReauthTicket string `json:"reauth_ticket" binding:"required"`
 		}
 
 		errCode := e.InvalidParams
@@ -104,7 +101,7 @@ func (h handler) DeletePasskey() gin.HandlerFunc {
 
 		userID, _ := c.Get("user_id")
 		if err = c.ShouldBindJSON(&req); err == nil {
-			errCode, err = h.service.DeletePasskey(h.Context(c), userID.(uint), req.ID)
+			errCode, err = h.service.DeletePasskey(h.Context(c), userID.(uint), req.ID, req.ReauthTicket)
 		}
 
 		h.I18n.JSON(c, errCode, nil, err)

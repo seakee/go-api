@@ -146,7 +146,7 @@ func (a authService) validateOAuthState(ctx context.Context, provider, state str
 	return e.SUCCESS
 }
 
-// Reauth verifies local credentials before high-risk OAuth bind or unbind operations.
+// Reauth verifies local credentials before high-risk operations.
 func (a authService) Reauth(ctx context.Context, identifier, password, challengeCode, totpCode string) (result ReauthResult, errCode int, err error) {
 	challengeCode = strings.TrimSpace(challengeCode)
 	totpCode = strings.TrimSpace(totpCode)
@@ -164,7 +164,7 @@ func (a authService) Reauth(ctx context.Context, identifier, password, challenge
 		if err != nil {
 			return result, e.InvalidSafeCode, err
 		}
-		if sc == nil || sc.Action != "oauth_reauth" || sc.UserID == 0 {
+		if sc == nil || sc.Action != reauthActionHighRisk || sc.UserID == 0 {
 			return result, e.InvalidSafeCode, nil
 		}
 
@@ -181,7 +181,7 @@ func (a authService) Reauth(ctx context.Context, identifier, password, challenge
 
 		result.ReauthTicket, err = a.generateReauthTicket(ctx, reauthTicket{
 			UserID: user.ID,
-			Action: "oauth_reauth",
+			Action: reauthActionHighRisk,
 		})
 		if err != nil {
 			return result, e.ERROR, err
@@ -214,7 +214,7 @@ func (a authService) Reauth(ctx context.Context, identifier, password, challenge
 	if user.TotpEnabled {
 		result.SafeCode, err = a.generateSafeCode(ctx, safeCode{
 			UserID: user.ID,
-			Action: "oauth_reauth",
+			Action: reauthActionHighRisk,
 		})
 		if err != nil {
 			return result, e.ERROR, err
@@ -224,7 +224,7 @@ func (a authService) Reauth(ctx context.Context, identifier, password, challenge
 
 	result.ReauthTicket, err = a.generateReauthTicket(ctx, reauthTicket{
 		UserID: user.ID,
-		Action: "oauth_reauth",
+		Action: reauthActionHighRisk,
 	})
 	if err != nil {
 		return result, e.ERROR, err
@@ -239,18 +239,14 @@ func (a authService) ConfirmOAuthBind(ctx context.Context, bindTicketCode, reaut
 		return token, e.BindTicketCanNotBeNull, nil
 	}
 
-	if strings.TrimSpace(reauthTicketCode) == "" {
-		return token, e.ReauthTicketCanNotBeNull, nil
-	}
-
 	bindTicket, err := a.parseBindTicket(ctx, bindTicketCode)
 	if err != nil || bindTicket == nil {
 		return token, e.InvalidBindTicket, err
 	}
 
-	reauthTicket, err := a.parseReauthTicket(ctx, reauthTicketCode)
-	if err != nil || reauthTicket == nil || reauthTicket.Action != "oauth_reauth" || reauthTicket.UserID == 0 {
-		return token, e.InvalidReauthTicket, err
+	reauthTicket, errCode, err := a.validateReauthTicket(ctx, reauthTicketCode, 0)
+	if errCode != e.SUCCESS {
+		return token, errCode, err
 	}
 
 	syncUserName, syncAvatar, err := buildOAuthProfileSync(bindTicket.OAuthProfile, syncFields)
@@ -349,13 +345,8 @@ func (a authService) UnbindOAuth(ctx context.Context, userID, identityID uint, r
 	if identityID == 0 {
 		return e.InvalidParams, nil
 	}
-	if strings.TrimSpace(reauthTicketCode) == "" {
-		return e.ReauthTicketCanNotBeNull, nil
-	}
-
-	reauthTicket, err := a.parseReauthTicket(ctx, reauthTicketCode)
-	if err != nil || reauthTicket == nil || reauthTicket.Action != "oauth_reauth" || reauthTicket.UserID != userID {
-		return e.InvalidReauthTicket, err
+	if _, errCode, err = a.validateReauthTicket(ctx, reauthTicketCode, userID); errCode != e.SUCCESS {
+		return errCode, err
 	}
 
 	boundIdentity, err := a.identityRepo.DetailByIDAndUserID(ctx, identityID, userID)

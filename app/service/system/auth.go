@@ -121,10 +121,10 @@ type AuthService interface {
 	TfaStatus(ctx context.Context, userID uint) (enable bool, errCode int, err error)
 	BeginPasskeyRegistration(ctx context.Context, userID uint, displayName string) (result PasskeyOptionsResult, errCode int, err error)
 	FinishPasskeyRegistration(ctx context.Context, userID uint, challengeID string, credential PasskeyCredential) (result PasskeyItem, errCode int, err error)
-	BeginPasskeyLogin(ctx context.Context, identifier string) (result PasskeyOptionsResult, errCode int, err error)
+	BeginPasskeyLogin(ctx context.Context) (result PasskeyOptionsResult, errCode int, err error)
 	FinishPasskeyLogin(ctx context.Context, challengeID string, credential PasskeyCredential) (token AccessToken, errCode int, err error)
 	ListPasskeys(ctx context.Context, userID uint) (list []PasskeyItem, errCode int, err error)
-	DeletePasskey(ctx context.Context, userID, passkeyID uint) (errCode int, err error)
+	DeletePasskey(ctx context.Context, userID, passkeyID uint, reauthTicket string) (errCode int, err error)
 	OauthUrl(ctx context.Context, oauthType, loginType string) (errCode int, url string)
 }
 
