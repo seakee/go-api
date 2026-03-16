@@ -36,7 +36,7 @@
       },
       "webauthn": {
         "rp_id": "127.0.0.1",
-        "rp_display_name": "Go API Admin",
+        "rp_display_name": "Dudu Admin",
         "rp_origins": [
           "http://127.0.0.1:3000"
         ],
