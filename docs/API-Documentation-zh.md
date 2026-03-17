@@ -278,7 +278,7 @@ Content-Type: application/json
 
 > 更完整的请求参数、响应示例和模块错误码请查看 `docs/Admin-System-Management.md`。
 >
-> 管理端鉴权接口请查看 `docs/Admin-Auth.md`。当前仅“当前登录用户自己的敏感安全操作”统一接入二次验证流程：优先 Passkey，可切换密码；未使用 Passkey 且已开启 TFA 时，需先验证密码，再提交 `totp_code` 换取 `reauth_ticket`。`/go-api/internal/admin/auth/password`、`/identifier`、`/tfa/enable`、`/tfa/disable`、`/passkey/register/options`、`/passkey` 都必须携带 `reauth_ticket`。其中密码相关字段（`/go-api/internal/admin/auth/token` 的 `grant_type=password`、`/password/reset`、`/reauth/password`、以及敏感操作统一验证里的密码步骤）前端必须传 `md5(明文密码)`。
+> 管理端鉴权接口请查看 `docs/Admin-Auth.md`。当前仅“当前登录用户自己的敏感安全操作”统一接入二次验证流程：优先 Passkey，可切换密码；未使用 Passkey 且已开启 TFA 时，需先验证密码，再提交 `totp_code` 换取 `reauth_ticket`。`/go-api/internal/admin/auth/password`、`/identifier`、`/tfa/enable`、`/tfa/disable`、`/passkey/register/options`、`/passkey` 都必须携带 `reauth_ticket`。其中 `GET /go-api/internal/admin/auth/profile` 返回的 `email/phone` 为脱敏展示值；前端未修改该字段时，可在 `PUT /go-api/internal/admin/auth/identifier` 中原样回传，服务端会按“字段未变更”处理。密码相关字段（`/go-api/internal/admin/auth/token` 的 `grant_type=password`、`/password/reset`、`/reauth/password`、以及敏感操作统一验证里的密码步骤）前端必须传 `md5(明文密码)`。
 
 ### 健康检查端点
 

@@ -264,7 +264,7 @@ Note: third-party account bindings are stored in `sys_user_identity`, passkey cr
 
 > Full request/response examples and module-level error codes are maintained in `docs/Admin-System-Management.md`.
 >
-> Admin auth endpoints are documented in `docs/Admin-Auth.md`. For password-related fields in admin auth flows (`/go-api/internal/admin/auth/token` with `grant_type=password`, `/password/reset`, `/password`, and `/identifier` when TFA is disabled), clients must send `md5(plaintext password)`.
+> Admin auth endpoints are documented in `docs/Admin-Auth.md`. `GET /go-api/internal/admin/auth/profile` now returns masked `email/phone` values for display only; if a client submits the same masked value back to `PUT /go-api/internal/admin/auth/identifier`, the server treats that field as unchanged. For password-related fields in admin auth flows (`/go-api/internal/admin/auth/token` with `grant_type=password`, `/password/reset`, `/password`, and `/identifier` when TFA is disabled), clients must send `md5(plaintext password)`.
 
 #### Health Check Endpoints
 
