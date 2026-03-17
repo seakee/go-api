@@ -58,3 +58,80 @@ func isEmailIdentifier(identifier string) bool {
 func isPhoneIdentifier(identifier string) bool {
 	return isValidPhone(normalizePhone(identifier))
 }
+
+func maskCompactValue(value string) string {
+	runes := []rune(value)
+	switch len(runes) {
+	case 0:
+		return ""
+	case 1:
+		return "*"
+	case 2:
+		return string(runes[:1]) + "*"
+	default:
+		return string(runes[:1]) + strings.Repeat("*", len(runes)-2) + string(runes[len(runes)-1:])
+	}
+}
+
+func maskEmail(email string) string {
+	email = normalizeEmail(email)
+	if email == "" {
+		return ""
+	}
+
+	local, domain, ok := strings.Cut(email, "@")
+	if !ok {
+		return maskCompactValue(email)
+	}
+
+	maskedLocal := maskCompactValue(local)
+	host, suffix, ok := strings.Cut(domain, ".")
+	if !ok {
+		return maskedLocal + "@" + maskCompactValue(domain)
+	}
+
+	return maskedLocal + "@" + maskCompactValue(host) + "." + suffix
+}
+
+func maskPhone(phone string) string {
+	phone = normalizePhone(phone)
+	if phone == "" {
+		return ""
+	}
+
+	runes := []rune(phone)
+	const prefixLen = 3
+	const suffixLen = 4
+
+	if len(runes) <= prefixLen+suffixLen {
+		return maskCompactValue(phone)
+	}
+
+	return string(runes[:prefixLen]) +
+		strings.Repeat("*", len(runes)-prefixLen-suffixLen) +
+		string(runes[len(runes)-suffixLen:])
+}
+
+func restoreMaskedEmailInput(input, current string) string {
+	current = normalizeEmail(current)
+	if input == "" || current == "" {
+		return input
+	}
+	if input == maskEmail(current) {
+		return current
+	}
+
+	return input
+}
+
+func restoreMaskedPhoneInput(input, current string) string {
+	current = normalizePhone(current)
+	if input == "" || current == "" {
+		return input
+	}
+	if input == maskPhone(current) {
+		return current
+	}
+
+	return input
+}

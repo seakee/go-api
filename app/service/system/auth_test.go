@@ -37,6 +37,8 @@ func TestAuthService_Profile(t *testing.T) {
 		wantErr        bool
 		wantUserFields []string
 		wantRoleName   string
+		wantEmail      string
+		wantPhone      string
 	}{
 		{
 			name:   "get user profile successfully",
@@ -45,14 +47,18 @@ func TestAuthService_Profile(t *testing.T) {
 				Model:    gorm.Model{ID: 1},
 				UserName: "testuser",
 				Avatar:   "https://example.com/avatar.png",
+				Email:    "testuser@example.com",
+				Phone:    "+8613800000001",
 			},
 			mockRoles:      map[string]uint{"base": 1, "editor": 2},
 			mockErr:        nil,
 			mockRolesErr:   nil,
 			wantErrCode:    0,
 			wantErr:        false,
-			wantUserFields: []string{"id", "user_name", "avatar", "role_name"},
+			wantUserFields: []string{"id", "user_name", "avatar", "email", "phone", "role_name"},
 			wantRoleName:   "管理员",
+			wantEmail:      "t******r@e*****e.com",
+			wantPhone:      "+86*******0001",
 		},
 		{
 			name:   "super admin profile",
@@ -61,14 +67,18 @@ func TestAuthService_Profile(t *testing.T) {
 				Model:    gorm.Model{ID: 2},
 				UserName: "super",
 				Avatar:   "https://example.com/super.png",
+				Email:    "super@example.com",
+				Phone:    "+8613800000002",
 			},
 			mockRoles:      map[string]uint{"base": 1, "super_admin": 3},
 			mockErr:        nil,
 			mockRolesErr:   nil,
 			wantErrCode:    0,
 			wantErr:        false,
-			wantUserFields: []string{"id", "user_name", "avatar", "role_name"},
+			wantUserFields: []string{"id", "user_name", "avatar", "email", "phone", "role_name"},
 			wantRoleName:   "超级管理员",
+			wantEmail:      "s***r@e*****e.com",
+			wantPhone:      "+86*******0002",
 		},
 		{
 			name:   "base only profile",
@@ -77,14 +87,18 @@ func TestAuthService_Profile(t *testing.T) {
 				Model:    gorm.Model{ID: 3},
 				UserName: "base_user",
 				Avatar:   "https://example.com/base.png",
+				Email:    "base@example.com",
+				Phone:    "+8613800000003",
 			},
 			mockRoles:      map[string]uint{"base": 1},
 			mockErr:        nil,
 			mockRolesErr:   nil,
 			wantErrCode:    0,
 			wantErr:        false,
-			wantUserFields: []string{"id", "user_name", "avatar", "role_name"},
+			wantUserFields: []string{"id", "user_name", "avatar", "email", "phone", "role_name"},
 			wantRoleName:   "普通用户",
+			wantEmail:      "b**e@e*****e.com",
+			wantPhone:      "+86*******0003",
 		},
 		{
 			name:           "list roles failed",
@@ -153,6 +167,16 @@ func TestAuthService_Profile(t *testing.T) {
 				if tt.wantRoleName != "" {
 					if got, ok := user["role_name"]; !ok || got != tt.wantRoleName {
 						t.Errorf("Profile() role_name = %v, want %v", got, tt.wantRoleName)
+					}
+				}
+				if tt.wantEmail != "" {
+					if got, ok := user["email"]; !ok || got != tt.wantEmail {
+						t.Errorf("Profile() email = %v, want %v", got, tt.wantEmail)
+					}
+				}
+				if tt.wantPhone != "" {
+					if got, ok := user["phone"]; !ok || got != tt.wantPhone {
+						t.Errorf("Profile() phone = %v, want %v", got, tt.wantPhone)
 					}
 				}
 			}
@@ -755,22 +779,27 @@ func TestAuthService_UpdatePassword(t *testing.T) {
 // TestAuthService_UpdateIdentifier tests update identifier with the unified reauth ticket.
 func TestAuthService_UpdateIdentifier(t *testing.T) {
 	tests := []struct {
-		name          string
-		reauthTicket  string
-		email         string
-		phone         string
-		mockUser      *system.User
-		existingEmail *system.User
-		existingPhone *system.User
-		parsedTicket  *reauthTicket
-		wantErrCode   int
-		wantErr       bool
-		wantUpdated   bool
-		wantConsumed  bool
+		name             string
+		reauthTicket     string
+		email            string
+		phone            string
+		mockUser         *system.User
+		existingEmail    *system.User
+		existingPhone    *system.User
+		parsedTicket     *reauthTicket
+		wantErrCode      int
+		wantErr          bool
+		wantUpdated      bool
+		wantConsumed     bool
+		wantLookupEmail  string
+		wantLookupPhone  string
+		wantUpdatedEmail string
+		wantUpdatedPhone string
 	}{
 		{
 			name:         "reauth ticket is required",
 			email:        "new@example.com",
+			mockUser:     &system.User{Model: gorm.Model{ID: 1}, Status: 1},
 			wantErrCode:  e.ReauthTicketCanNotBeNull,
 			wantErr:      false,
 			wantUpdated:  false,
@@ -780,6 +809,7 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 			name:         "invalid reauth ticket is rejected",
 			reauthTicket: "reauth-code",
 			email:        "new@example.com",
+			mockUser:     &system.User{Model: gorm.Model{ID: 1}, Status: 1},
 			wantErrCode:  e.InvalidReauthTicket,
 			wantErr:      false,
 			wantUpdated:  false,
@@ -789,6 +819,7 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 			name:         "invalid email format is rejected",
 			reauthTicket: "reauth-code",
 			email:        "invalid-email",
+			mockUser:     &system.User{Model: gorm.Model{ID: 1}, Status: 1},
 			wantErrCode:  e.InvalidIdentifier,
 			wantErr:      false,
 			wantUpdated:  false,
@@ -803,11 +834,12 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 				Model: gorm.Model{ID: 2},
 				Email: "duplicated@example.com",
 			},
-			parsedTicket: &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
-			wantErrCode:  e.IdentifierExists,
-			wantErr:      false,
-			wantUpdated:  false,
-			wantConsumed: false,
+			parsedTicket:    &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
+			wantErrCode:     e.IdentifierExists,
+			wantErr:         false,
+			wantUpdated:     false,
+			wantConsumed:    false,
+			wantLookupEmail: "duplicated@example.com",
 		},
 		{
 			name:         "update identifier succeeds and consumes ticket",
@@ -818,11 +850,56 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 				Status: 1,
 				Email:  "old@example.com",
 			},
-			parsedTicket: &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
-			wantErrCode:  e.SUCCESS,
-			wantErr:      false,
-			wantUpdated:  true,
-			wantConsumed: true,
+			parsedTicket:     &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
+			wantErrCode:      e.SUCCESS,
+			wantErr:          false,
+			wantUpdated:      true,
+			wantConsumed:     true,
+			wantLookupPhone:  "+8613800000002",
+			wantUpdatedEmail: "",
+			wantUpdatedPhone: "+8613800000002",
+		},
+		{
+			name:         "masked email is restored before updating phone",
+			reauthTicket: "reauth-code",
+			email:        "o*d@e*****e.com",
+			phone:        "+8613800000002",
+			mockUser: &system.User{
+				Model:  gorm.Model{ID: 1},
+				Status: 1,
+				Email:  "old@example.com",
+				Phone:  "+8613800000001",
+			},
+			parsedTicket:     &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
+			wantErrCode:      e.SUCCESS,
+			wantErr:          false,
+			wantUpdated:      true,
+			wantConsumed:     true,
+			wantLookupEmail:  "old@example.com",
+			wantLookupPhone:  "+8613800000002",
+			wantUpdatedEmail: "old@example.com",
+			wantUpdatedPhone: "+8613800000002",
+		},
+		{
+			name:         "masked phone is restored before updating email",
+			reauthTicket: "reauth-code",
+			email:        "new@example.com",
+			phone:        "+86*******0001",
+			mockUser: &system.User{
+				Model:  gorm.Model{ID: 1},
+				Status: 1,
+				Email:  "old@example.com",
+				Phone:  "+8613800000001",
+			},
+			parsedTicket:     &reauthTicket{UserID: 1, Action: reauthActionHighRisk},
+			wantErrCode:      e.SUCCESS,
+			wantErr:          false,
+			wantUpdated:      true,
+			wantConsumed:     true,
+			wantLookupEmail:  "new@example.com",
+			wantLookupPhone:  "+8613800000001",
+			wantUpdatedEmail: "new@example.com",
+			wantUpdatedPhone: "+8613800000001",
 		},
 	}
 
@@ -838,24 +915,33 @@ func TestAuthService_UpdateIdentifier(t *testing.T) {
 					return tt.mockUser, nil
 				},
 				DetailByEmailFunc: func(ctx context.Context, email string) (*system.User, error) {
-					if email == tt.email {
-						return tt.existingEmail, nil
+					if tt.wantLookupEmail == "" {
+						t.Fatalf("DetailByEmail() called unexpectedly")
 					}
-					return nil, nil
+					if email != tt.wantLookupEmail {
+						t.Fatalf("DetailByEmail() email = %s, want %s", email, tt.wantLookupEmail)
+					}
+					return tt.existingEmail, nil
 				},
 				DetailByPhoneFunc: func(ctx context.Context, phone string) (*system.User, error) {
-					if phone == tt.phone {
-						return tt.existingPhone, nil
+					if tt.wantLookupPhone == "" {
+						t.Fatalf("DetailByPhone() called unexpectedly")
 					}
-					return nil, nil
+					if phone != tt.wantLookupPhone {
+						t.Fatalf("DetailByPhone() phone = %s, want %s", phone, tt.wantLookupPhone)
+					}
+					return tt.existingPhone, nil
 				},
 				UpdateIdentifierFunc: func(ctx context.Context, user *system.User) error {
-					updated = true
-					if user.Email != tt.email {
-						t.Errorf("UpdateIdentifier() email = %s, want %s", user.Email, tt.email)
+					if !tt.wantUpdated {
+						t.Fatalf("UpdateIdentifier() called unexpectedly")
 					}
-					if user.Phone != tt.phone {
-						t.Errorf("UpdateIdentifier() phone = %s, want %s", user.Phone, tt.phone)
+					updated = true
+					if user.Email != tt.wantUpdatedEmail {
+						t.Errorf("UpdateIdentifier() email = %s, want %s", user.Email, tt.wantUpdatedEmail)
+					}
+					if user.Phone != tt.wantUpdatedPhone {
+						t.Errorf("UpdateIdentifier() phone = %s, want %s", user.Phone, tt.wantUpdatedPhone)
 					}
 					return nil
 				},

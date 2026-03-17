@@ -375,6 +375,14 @@ func (a authService) UpdateIdentifier(ctx context.Context, userID uint, reauthTi
 	email = normalizeEmail(email)
 	phone = normalizePhone(phone)
 
+	user, errCode, err := a.activeUserByID(ctx, userID)
+	if errCode != e.SUCCESS {
+		return errCode, err
+	}
+
+	email = restoreMaskedEmailInput(email, user.Email)
+	phone = restoreMaskedPhoneInput(phone, user.Phone)
+
 	if email == "" && phone == "" {
 		errCode = e.IdentifierCantBeNull
 		return
@@ -391,11 +399,6 @@ func (a authService) UpdateIdentifier(ctx context.Context, userID uint, reauthTi
 	}
 
 	if _, errCode, err = a.validateReauthTicket(ctx, reauthTicket, userID); errCode != e.SUCCESS {
-		return errCode, err
-	}
-
-	user, errCode, err := a.activeUserByID(ctx, userID)
-	if errCode != e.SUCCESS {
 		return errCode, err
 	}
 
@@ -550,8 +553,8 @@ func (a authService) Profile(ctx context.Context, userID uint) (user map[string]
 		"id":        u.ID,
 		"user_name": u.UserName,
 		"avatar":    u.Avatar,
-		"email":     u.Email,
-		"phone":     u.Phone,
+		"email":     maskEmail(u.Email),
+		"phone":     maskPhone(u.Phone),
 		"role_name": resolveRoleName(userRoles),
 	}
 
