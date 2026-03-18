@@ -649,11 +649,14 @@ func (m *Model) markPrimaryKey(columnName string) {
 		}
 		m.TableFields[i].IsPrimaryKey = true
 		m.TableFields[i].IsNullable = false
+		fieldType, importPath := m.getGoType(m.TableFields[i].SQLType, m.TableFields[i].IsUnsigned, m.TableFields[i].IsNullable)
+		m.TableFields[i].Type = fieldType
+		if importPath != "" {
+			m.Imports[importPath] = struct{}{}
+		}
 		m.HasPrimaryKey = true
 		m.PrimaryKeyName = columnName
-		if m.IDType == "" {
-			m.IDType = m.TableFields[i].Type
-		}
+		m.IDType = m.TableFields[i].Type
 		m.TableFields[i].GormTag = m.generateGormTag(&m.TableFields[i], m.TableFields[i].SQLType)
 		return
 	}
@@ -1000,7 +1003,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, db *gorm.DB) ({{.IDType}}, error) {
 	// Perform the database insert operation with context.
 	if err := db.WithContext(ctx).Create({{.StructNameFirstLetter}}).Error; err != nil {
-		return 0, fmt.Errorf("create failed: %w", err)
+		return *new({{.IDType}}), fmt.Errorf("create failed: %w", err)
 	}
 
 	return {{.StructNameFirstLetter}}.{{.PrimaryKeyFieldName}}, nil

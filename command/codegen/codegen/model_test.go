@@ -486,3 +486,61 @@ func TestModel_parseSQLPostgres(t *testing.T) {
 		t.Fatalf("expected jsonb field mapping in generated code, got:\n%s", code)
 	}
 }
+
+func TestModel_parseSQLPostgresTableLevelPrimaryKeyRecomputesType(t *testing.T) {
+	m := NewModelWithDialect("postgres")
+	sqlContent := `CREATE TABLE oauth_apps (
+		app_uuid uuid,
+		name varchar(80) NOT NULL,
+		PRIMARY KEY (app_uuid)
+	);`
+
+	if err := m.parseSQL(sqlContent); err != nil {
+		t.Fatalf("parseSQL() error = %v", err)
+	}
+
+	if m.PrimaryKeyName != "app_uuid" {
+		t.Fatalf("PrimaryKeyName = %s, want app_uuid", m.PrimaryKeyName)
+	}
+	if m.IDType != "string" {
+		t.Fatalf("IDType = %s, want string", m.IDType)
+	}
+
+	var pkField *Field
+	for i := range m.TableFields {
+		if m.TableFields[i].JsonName == "app_uuid" {
+			pkField = &m.TableFields[i]
+			break
+		}
+	}
+	if pkField == nil {
+		t.Fatal("primary key field app_uuid not found")
+	}
+	if pkField.Type != "string" {
+		t.Fatalf("pkField.Type = %s, want string", pkField.Type)
+	}
+	if pkField.IsNullable {
+		t.Fatal("primary key field should be non-nullable")
+	}
+}
+
+func TestModel_generateCodeCreateUsesTypedZeroValueOnError(t *testing.T) {
+	m := NewModelWithDialect("postgres")
+	sqlContent := `CREATE TABLE oauth_apps (
+		app_uuid uuid PRIMARY KEY,
+		name varchar(80) NOT NULL
+	);`
+
+	if err := m.parseSQL(sqlContent); err != nil {
+		t.Fatalf("parseSQL() error = %v", err)
+	}
+
+	code, err := m.generateCode()
+	if err != nil {
+		t.Fatalf("generateCode() error = %v", err)
+	}
+
+	if !strings.Contains(code, "return *new(string), fmt.Errorf(\"create failed: %w\", err)") {
+		t.Fatalf("expected create error branch to return typed zero value, got:\n%s", code)
+	}
+}
