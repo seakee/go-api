@@ -15,7 +15,12 @@ import (
 func Register(engine *gin.Engine, ctx *http.Context) {
 	ctx.Engine = engine
 
-	api := engine.Group("go-api")
+	routePrefix := "go-api"
+	if ctx != nil && ctx.Config != nil && ctx.Config.System.RoutePrefix != "" {
+		routePrefix = ctx.Config.System.RoutePrefix
+	}
+
+	api := engine.Group(routePrefix)
 
 	// Set up internal API routes
 	internalAPI := api.Group("internal")
