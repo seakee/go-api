@@ -16,6 +16,7 @@ import (
 // It defines and parses command line flags and calls the appropriate function to process SQL files based on the provided flags.
 func main() {
 	// Define command line flags
+	dialect := flag.String("dialect", "mysql", "SQL dialect: mysql or postgres")
 	force := flag.Bool("force", false, "force overwrite existing files")
 	name := flag.String("name", "", "SQL file name (without .sql extension) in the bin/data/sql directory to generate code for")
 	sqlPath := flag.String("sql", "bin/data/sql", "SQL directory")
@@ -28,10 +29,10 @@ func main() {
 
 	if *name != "" {
 		// If the name parameter is provided, process a single SQL file
-		processSingleSQLFile(*force, *name, *sqlPath, *modelOutputPath, *repoOutputPath, *serviceOutputPath)
+		processSingleSQLFile(*dialect, *force, *name, *sqlPath, *modelOutputPath, *repoOutputPath, *serviceOutputPath)
 	} else {
 		// Otherwise, process all SQL files in the sqlPath directory
-		processSQLDirectory(*force, *sqlPath, *modelOutputPath, *repoOutputPath, *serviceOutputPath)
+		processSQLDirectory(*dialect, *force, *sqlPath, *modelOutputPath, *repoOutputPath, *serviceOutputPath)
 	}
 }
 
@@ -44,9 +45,9 @@ func main() {
 //   - modelOutputPath: directory to output the generated model code
 //   - repoOutputPath: directory to output the generated repository code
 //   - serviceOutputPath: directory to output the generated service code
-func processSingleSQLFile(force bool, name, sqlPath, modelOutputPath, repoOutputPath, serviceOutputPath string) {
+func processSingleSQLFile(dialect string, force bool, name, sqlPath, modelOutputPath, repoOutputPath, serviceOutputPath string) {
 	// Create a new Model instance
-	m := codegen.NewModel()
+	m := codegen.NewModelWithDialect(dialect)
 
 	// Construct the full path to the SQL file
 	sqlFilePath := filepath.Join(sqlPath, name+".sql")
@@ -76,7 +77,7 @@ func processSingleSQLFile(force bool, name, sqlPath, modelOutputPath, repoOutput
 //   - modelOutputPath: directory to output the generated model code
 //   - repoOutputPath: directory to output the generated repository code
 //   - serviceOutputPath: directory to output the generated service code
-func processSQLDirectory(force bool, sqlPath, modelOutputPath, repoOutputPath, serviceOutputPath string) {
+func processSQLDirectory(dialect string, force bool, sqlPath, modelOutputPath, repoOutputPath, serviceOutputPath string) {
 	// Walk through all files in the sqlPath directory
 	err := filepath.Walk(sqlPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -85,7 +86,7 @@ func processSQLDirectory(force bool, sqlPath, modelOutputPath, repoOutputPath, s
 		// If the file is not a directory and has a .sql extension, generate the corresponding code
 		if !info.IsDir() && filepath.Ext(path) == ".sql" {
 			// Create a new Model instance
-			m := codegen.NewModel()
+			m := codegen.NewModelWithDialect(dialect)
 			// Generate the model code
 			if err = m.Generate(force, path, modelOutputPath); err != nil {
 				return err

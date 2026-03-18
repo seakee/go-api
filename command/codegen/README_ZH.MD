@@ -5,16 +5,17 @@
 ---
 ### 概述
 
-Go API 代码生成器是一个强大的工具，可以从 MySQL CREATE TABLE 语句自动生成 Go 模型和仓库代码。它解析 SQL 文件并创建相应的带有 GORM 标签的 Go 结构体，以及仓库接口和实现，用于常用的数据库操作。
+Go API 代码生成器可以从 SQL `CREATE TABLE` 语句生成 Go 模型和仓库代码。目前支持 MySQL，以及一个最小可用范围的 PostgreSQL 子集。它解析 SQL 文件并创建相应的带有 GORM 标签的 Go 结构体，以及仓库接口和实现，用于常用的数据库操作。
 
 ### 功能特性
 
-- **SQL 解析**: 支持复杂的字段类型定义（VARCHAR(255), DECIMAL(10,2) 等）
-- **类型映射**: 从 MySQL 类型到 Go 类型的全面映射
+- **SQL 解析**: 支持常见的 MySQL 和 PostgreSQL 字段类型定义
+- **类型映射**: 将常见 SQL 类型映射到 Go 类型
 - **GORM 集成**: 自动生成 GORM 标签（column, size, not null, default 等）
 - **注释支持**: 保留 SQL 注释作为 Go 结构体字段注释
 - **仓库生成**: 自动生成仓库接口和实现
 - **智能更新逻辑**: 生成只更新非零值字段的更新方法
+- **显式字段更新**: 生成 `UpdateFields`，安全支持零值更新
 - **灵活的列表方法**: 接受结构体参数作为查询条件的列表方法
 - **批量处理**: 处理单个文件或整个目录
 - **强制覆盖**: 可选择覆盖现有文件
@@ -37,6 +38,7 @@ go build -o codegen ./command/codegen/handler.go
 **可用选项：**
 
 - `-force`: 强制覆盖现有文件（默认：false）
+- `-dialect`: SQL 方言，`mysql` 或 `postgres`（默认：`mysql`）
 - `-name`: 要生成代码的 SQL 文件名（不含 .sql 扩展名）
 - `-sql`: SQL 目录路径（默认："bin/data/sql"）
 - `-model`: 模型输出目录（默认："app/model"）
@@ -48,6 +50,11 @@ go build -o codegen ./command/codegen/handler.go
 **为单个 SQL 文件生成代码：**
 ```bash
 ./codegen -name auth_app
+```
+
+**为 PostgreSQL SQL 文件生成代码：**
+```bash
+./codegen -dialect=postgres -sql bin/data/sql/postgres -name oauth_app
 ```
 
 **为目录中所有 SQL 文件生成代码：**
@@ -62,7 +69,9 @@ go build -o codegen ./command/codegen/handler.go
 
 ### SQL 文件格式
 
-生成器期望标准的 MySQL CREATE TABLE 语句。示例如下：
+#### MySQL 示例
+
+生成器支持标准 MySQL `CREATE TABLE` 语句。示例如下：
 
 ```sql
 CREATE TABLE `auth_app`
@@ -78,6 +87,22 @@ CREATE TABLE `auth_app`
     PRIMARY KEY (`id`),
     KEY `app_id` (`app_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '应用信息表';
+```
+
+#### PostgreSQL 示例
+
+生成器也支持一个最小范围的 PostgreSQL 单表 DDL。示例如下：
+
+```sql
+CREATE TABLE IF NOT EXISTS "public"."oauth_app"
+(
+    "app_uuid"   uuid PRIMARY KEY,
+    "app_name"   varchar(80)              NOT NULL,
+    "payload"    jsonb                    DEFAULT NULL,
+    "status"     integer                  NOT NULL DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ### 生成的输出
@@ -198,6 +223,49 @@ func (r *appRepo) List(ctx context.Context, app *auth.App) ([]auth.App, error) {
 | double | float64 | |
 | timestamp, datetime | time.Time | |
 | date | time.Time | |
+
+### 支持的 PostgreSQL 类型
+
+| PostgreSQL 类型 | Go 类型 | 备注 |
+|-----------------|---------|------|
+| smallserial | int16 | |
+| serial | int32 | |
+| bigserial | int64 | |
+| integer | int32 | |
+| bigint | int64 | |
+| uuid | string | 最小支持版 |
+| varchar | string / *string | 可空列会映射成指针 |
+| text | string / *string | |
+| boolean | bool / *bool | |
+| numeric | decimal.Decimal / *decimal.Decimal | |
+| jsonb | datatypes.JSON / *datatypes.JSON | |
+| bytea | []byte | |
+| timestamp with time zone, timestamptz | time.Time / *time.Time | |
+| timestamp without time zone | time.Time / *time.Time | |
+| date | time.Time / *time.Time | |
+
+### PostgreSQL 支持范围
+
+当前 PostgreSQL 支持故意控制在较小范围，仅支持：
+
+- 单个 `CREATE TABLE` 语句
+- 可选 schema
+- 双引号标识符
+- 单列主键
+- 上表列出的常见标量类型
+
+当前暂不支持：
+
+- 复合主键
+- 数组类型
+- `COMMENT ON`
+- 通过 `ALTER TABLE` 拆开的定义
+- enum、domain 等更复杂的 PostgreSQL 特性
+
+### TODO
+
+- 在 README 中补充 PostgreSQL 生成结果的关键片段，方便用户快速对照输入输出。
+- 后续继续扩展 PostgreSQL 支持，优先补充 `COMMENT ON` 和数组类型。
 | json | string | |
 | blob | []byte | |
 

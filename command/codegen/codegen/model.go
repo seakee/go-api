@@ -24,6 +24,7 @@ const defaultModelOutPath = "app/model"
 // Field represents a field in a database table.
 type Field struct {
 	Name            string // The name of the field in Go struct
+	SQLType         string // The original SQL type definition
 	Type            string // The Go type of the field
 	JsonName        string // The JSON name of the field
 	GormTag         string // The GORM tag for the field
@@ -34,21 +35,38 @@ type Field struct {
 	Scale           int    // Scale for decimal types
 	IsUnsigned      bool   // Whether the field is unsigned (for numeric types)
 	IsAutoIncrement bool   // Whether the field is auto increment
+	IsPrimaryKey    bool   // Whether the field is part of the primary key
 }
 
 // Model represents the structure of a database table.
 type Model struct {
-	PackageName string              // The package name for the generated Go file
-	Imports     map[string]struct{} // Imports required by the Go file
-	StructName  string              // The name of the Go struct
-	TableName   string              // The name of the database table
-	TableFields []Field             // The fields of the table
+	PackageName    string              // The package name for the generated Go file
+	Imports        map[string]struct{} // Imports required by the Go file
+	StructName     string              // The name of the Go struct
+	TableName      string              // The unqualified table name
+	SchemaName     string              // Optional schema name
+	TableFields    []Field             // The fields of the table
+	UseGormModel   bool                // Whether the generated model can embed gorm.Model
+	IDType         string              // Primary key type used by generated methods
+	PrimaryKeyName string              // Primary key column name
+	HasPrimaryKey  bool                // Whether the table defines a single-column primary key
+	Dialect        string              // SQL dialect used by the parser
 }
 
 // NewModel creates a new instance of Model.
 func NewModel() *Model {
+	return NewModelWithDialect("mysql")
+}
+
+// NewModelWithDialect creates a new Model for the given SQL dialect.
+func NewModelWithDialect(dialect string) *Model {
+	if dialect == "" {
+		dialect = "mysql"
+	}
+
 	return &Model{
 		Imports: make(map[string]struct{}),
+		Dialect: strings.ToLower(dialect),
 	}
 }
 
@@ -61,12 +79,51 @@ func NewModel() *Model {
 // Returns:
 //   - A string representing the Go type.
 //   - A string representing the import path required for the Go type, if any.
-func (m *Model) getGoType(sqlType string, isUnsigned bool) (string, string) {
+func (m *Model) getGoType(sqlType string, isUnsigned, isNullable bool) (string, string) {
+	normalizedType := strings.ToLower(strings.TrimSpace(sqlType))
+	makeNullable := func(goType, importPath string) (string, string) {
+		if !isNullable {
+			return goType, importPath
+		}
+		switch goType {
+		case "[]byte":
+			return goType, importPath
+		default:
+			return "*" + goType, importPath
+		}
+	}
+
+	if m.Dialect == "postgres" {
+		switch {
+		case strings.HasPrefix(normalizedType, "smallserial"):
+			return makeNullable("int16", "")
+		case strings.HasPrefix(normalizedType, "serial"):
+			return makeNullable("int32", "")
+		case strings.HasPrefix(normalizedType, "bigserial"):
+			return makeNullable("int64", "")
+		case strings.HasPrefix(normalizedType, "uuid"):
+			return makeNullable("string", "")
+		case strings.HasPrefix(normalizedType, "jsonb"):
+			return makeNullable("datatypes.JSON", "gorm.io/datatypes")
+		case strings.HasPrefix(normalizedType, "bytea"):
+			return "[]byte", ""
+		case strings.HasPrefix(normalizedType, "timestamp with time zone"), strings.HasPrefix(normalizedType, "timestamp without time zone"), strings.HasPrefix(normalizedType, "timestamptz"):
+			return makeNullable("time.Time", "time")
+		case strings.HasPrefix(normalizedType, "double precision"):
+			return makeNullable("float64", "")
+		case strings.HasPrefix(normalizedType, "integer"):
+			return makeNullable("int32", "")
+		}
+	}
+
 	// Extract base type and size information
 	typeRegex := regexp.MustCompile(`^(\w+)(?:\((\d+)(?:,(\d+))?\))?`)
-	matches := typeRegex.FindStringSubmatch(sqlType)
+	matches := typeRegex.FindStringSubmatch(normalizedType)
 
 	if len(matches) == 0 {
+		if isNullable {
+			return "*any", ""
+		}
 		return "any", ""
 	}
 
@@ -75,44 +132,44 @@ func (m *Model) getGoType(sqlType string, isUnsigned bool) (string, string) {
 	switch baseType {
 	case "tinyint":
 		if isUnsigned {
-			return "uint8", ""
+			return makeNullable("uint8", "")
 		}
-		return "int8", ""
+		return makeNullable("int8", "")
 	case "smallint":
 		if isUnsigned {
-			return "uint16", ""
+			return makeNullable("uint16", "")
 		}
-		return "int16", ""
+		return makeNullable("int16", "")
 	case "mediumint", "int":
 		if isUnsigned {
-			return "uint32", ""
+			return makeNullable("uint32", "")
 		}
-		return "int32", ""
+		return makeNullable("int32", "")
 	case "bigint":
 		if isUnsigned {
-			return "uint64", ""
+			return makeNullable("uint64", "")
 		}
-		return "int64", ""
+		return makeNullable("int64", "")
 	case "float":
-		return "float32", ""
+		return makeNullable("float32", "")
 	case "double", "real":
-		return "float64", ""
+		return makeNullable("float64", "")
 	case "decimal", "numeric":
-		return "decimal.Decimal", "github.com/shopspring/decimal"
+		return makeNullable("decimal.Decimal", "github.com/shopspring/decimal")
 	case "bit":
-		return "uint64", ""
+		return makeNullable("uint64", "")
 	case "bool", "boolean":
-		return "bool", ""
+		return makeNullable("bool", "")
 	case "char", "varchar", "text", "tinytext", "mediumtext", "longtext", "enum", "set":
-		return "string", ""
+		return makeNullable("string", "")
 	case "binary", "varbinary", "blob", "tinyblob", "mediumblob", "longblob":
 		return "[]byte", ""
 	case "date", "time", "datetime", "timestamp", "year":
-		return "time.Time", "time"
+		return makeNullable("time.Time", "time")
 	case "json":
-		return "datatypes.JSON", "gorm.io/datatypes"
+		return makeNullable("datatypes.JSON", "gorm.io/datatypes")
 	default:
-		return "any", ""
+		return makeNullable("any", "")
 	}
 }
 
@@ -129,6 +186,14 @@ func (m *Model) getGoType(sqlType string, isUnsigned bool) (string, string) {
 // Returns:
 //   - An error if there is an issue parsing the SQL schema, otherwise nil.
 func (m *Model) parseSQL(sql string) error {
+	m.TableFields = nil
+	m.TableName = ""
+	m.SchemaName = ""
+	m.PrimaryKeyName = ""
+	m.HasPrimaryKey = false
+	m.IDType = ""
+	m.UseGormModel = false
+
 	// Split the SQL schema into lines for easier processing.
 	lines := strings.Split(sql, "\n")
 
@@ -150,10 +215,18 @@ func (m *Model) parseSQL(sql string) error {
 		case "create":
 			// If the line starts with "create table", extract the table name.
 			if len(parts) >= 3 && parts[1] == "table" {
-				m.TableName = strings.Trim(parts[2], "`")
+				m.parseCreateTableLine(originalLine)
 			}
-		case "primary", "unique", "key", "index", "constraint", "foreign", "engine", "default", "collate", "comment":
+		case "primary", "unique", "key", "index", "foreign", "engine", "default", "collate", "comment":
 			// Ignore constraint, index, and table-level configuration lines.
+			if primaryKeyName := m.extractPrimaryKeyName(originalLine); primaryKeyName != "" {
+				m.markPrimaryKey(primaryKeyName)
+			}
+			continue
+		case "constraint":
+			if primaryKeyName := m.extractPrimaryKeyName(originalLine); primaryKeyName != "" {
+				m.markPrimaryKey(primaryKeyName)
+			}
 			continue
 		default:
 			// Process lines that define fields.
@@ -167,12 +240,7 @@ func (m *Model) parseSQL(sql string) error {
 				continue
 			}
 
-			name := strings.Trim(parts[0], "`")
-			// Skip certain predefined field names.
-			if name == "id" || name == "created_at" || name == "updated_at" || name == "deleted_at" {
-				continue
-			}
-
+			name := m.cleanIdentifier(parts[0])
 			if len(parts) < 2 {
 				continue
 			}
@@ -184,6 +252,13 @@ func (m *Model) parseSQL(sql string) error {
 				m.TableFields = append(m.TableFields, *field)
 			}
 		}
+	}
+
+	m.UseGormModel = m.canUseGormModel()
+	if m.IDType == "" && m.HasPrimaryKey {
+		m.IDType = "uint"
+	} else if m.IDType == "" {
+		m.IDType = "uint"
 	}
 
 	return nil
@@ -201,16 +276,35 @@ func (m *Model) parseFieldDefinition(originalLine, fieldName string, parts []str
 	}
 
 	// Parse field type and attributes
-	typeStr := parts[1]
+	typeStr := m.extractTypeDefinition(parts)
+	field.SQLType = typeStr
 
 	// Check for UNSIGNED
 	field.IsUnsigned = strings.Contains(strings.ToUpper(originalLine), "UNSIGNED")
 
 	// Check for NOT NULL
 	field.IsNullable = !strings.Contains(strings.ToUpper(originalLine), "NOT NULL")
+	if strings.Contains(strings.ToUpper(originalLine), "PRIMARY KEY") {
+		field.IsNullable = false
+	}
 
 	// Check for AUTO_INCREMENT
 	field.IsAutoIncrement = strings.Contains(strings.ToUpper(originalLine), "AUTO_INCREMENT")
+	if m.Dialect == "postgres" {
+		upperLine := strings.ToUpper(originalLine)
+		if strings.Contains(upperLine, "GENERATED") && strings.Contains(upperLine, "AS IDENTITY") {
+			field.IsAutoIncrement = true
+		}
+		if strings.HasPrefix(strings.ToLower(typeStr), "serial") || strings.HasPrefix(strings.ToLower(typeStr), "bigserial") || strings.HasPrefix(strings.ToLower(typeStr), "smallserial") {
+			field.IsAutoIncrement = true
+			field.IsNullable = false
+		}
+	}
+
+	if strings.Contains(strings.ToUpper(originalLine), "PRIMARY KEY") {
+		field.IsPrimaryKey = true
+		field.IsNullable = false
+	}
 
 	// Extract size and scale information
 	field.Size, field.Scale = m.extractSizeAndScale(typeStr)
@@ -222,8 +316,13 @@ func (m *Model) parseFieldDefinition(originalLine, fieldName string, parts []str
 	field.Comment = m.extractComment(originalLine)
 
 	// Determine the Go type and any required import for the field.
-	fieldType, importPath := m.getGoType(typeStr, field.IsUnsigned)
+	fieldType, importPath := m.getGoType(typeStr, field.IsUnsigned, field.IsNullable)
 	field.Type = fieldType
+	if field.IsPrimaryKey {
+		m.HasPrimaryKey = true
+		m.PrimaryKeyName = field.JsonName
+		m.IDType = fieldType
+	}
 
 	if importPath != "" {
 		m.Imports[importPath] = struct{}{}
@@ -268,7 +367,11 @@ func (m *Model) extractDefaultValue(line string) string {
 	matches := defaultRegex.FindStringSubmatch(line)
 
 	if len(matches) > 1 {
-		return strings.Trim(matches[1], "'\"")
+		defaultValue := strings.Trim(matches[1], "'\"")
+		if strings.EqualFold(defaultValue, "NULL") {
+			return ""
+		}
+		return defaultValue
 	}
 
 	return ""
@@ -296,19 +399,34 @@ func (m *Model) generateGormTag(field *Field, typeStr string) string {
 
 	// Type specification for certain types
 	baseType := strings.ToLower(strings.Split(typeStr, "(")[0])
-	switch baseType {
-	case "varchar", "char":
-		if field.Size > 0 {
-			tags = append(tags, fmt.Sprintf("type:varchar(%d)", field.Size))
+	if m.Dialect == "mysql" {
+		switch baseType {
+		case "varchar", "char":
+			if field.Size > 0 {
+				tags = append(tags, fmt.Sprintf("type:varchar(%d)", field.Size))
+			}
+		case "decimal", "numeric":
+			if field.Size > 0 && field.Scale > 0 {
+				tags = append(tags, fmt.Sprintf("type:decimal(%d,%d)", field.Size, field.Scale))
+			} else if field.Size > 0 {
+				tags = append(tags, fmt.Sprintf("type:decimal(%d)", field.Size))
+			}
+		case "text", "tinytext", "mediumtext", "longtext":
+			tags = append(tags, fmt.Sprintf("type:%s", baseType))
 		}
-	case "decimal", "numeric":
-		if field.Size > 0 && field.Scale > 0 {
-			tags = append(tags, fmt.Sprintf("type:decimal(%d,%d)", field.Size, field.Scale))
-		} else if field.Size > 0 {
-			tags = append(tags, fmt.Sprintf("type:decimal(%d)", field.Size))
+	} else {
+		switch baseType {
+		case "numeric":
+			if field.Size > 0 && field.Scale > 0 {
+				tags = append(tags, fmt.Sprintf("type:numeric(%d,%d)", field.Size, field.Scale))
+			}
+		case "jsonb", "bytea", "uuid", "text", "date", "timestamp", "timestamptz":
+			tags = append(tags, fmt.Sprintf("type:%s", baseType))
+		case "varchar", "character varying":
+			if field.Size > 0 {
+				tags = append(tags, fmt.Sprintf("type:varchar(%d)", field.Size))
+			}
 		}
-	case "text", "tinytext", "mediumtext", "longtext":
-		tags = append(tags, fmt.Sprintf("type:%s", baseType))
 	}
 
 	// NOT NULL constraint
@@ -319,6 +437,10 @@ func (m *Model) generateGormTag(field *Field, typeStr string) string {
 	// Default value
 	if field.DefaultValue != "" {
 		tags = append(tags, fmt.Sprintf("default:%s", field.DefaultValue))
+	}
+
+	if field.IsPrimaryKey {
+		tags = append(tags, "primaryKey")
 	}
 
 	// Auto increment
@@ -340,6 +462,15 @@ func (m *Model) generateGormTag(field *Field, typeStr string) string {
 func (m *Model) generateCode() (string, error) {
 	// Determine the package and struct names based on the table name.
 	m.PackageName, m.StructName = m.generateNames(m.TableName)
+	displayFields := m.templateFields()
+	primaryKeyFieldName := "ID"
+	primaryKeyName := m.PrimaryKeyName
+	if primaryKeyName == "" {
+		primaryKeyName = "id"
+	}
+	if primaryKeyField := m.primaryKeyField(); primaryKeyField != nil {
+		primaryKeyFieldName = primaryKeyField.Name
+	}
 
 	// Parse the model template.
 	tmpl := template.Must(template.New("model").Parse(modelTemplate))
@@ -350,9 +481,14 @@ func (m *Model) generateCode() (string, error) {
 		"StructName":            m.StructName,
 		"StructNameFirstLetter": strings.ToLower(m.StructName[0:1]),
 		"StructNameLower":       strings.ToLower(m.StructName),
-		"TableName":             m.TableName,
-		"TableFields":           m.TableFields,
+		"TableName":             m.qualifiedTableName(),
+		"TableFields":           displayFields,
 		"Imports":               m.Imports,
+		"UseGormModel":          m.UseGormModel,
+		"IDType":                m.IDType,
+		"PrimaryKeyName":        primaryKeyName,
+		"PrimaryKeyFieldName":   primaryKeyFieldName,
+		"HasPrimaryKey":         m.HasPrimaryKey,
 	})
 	if err != nil {
 		return "", err
@@ -368,6 +504,7 @@ func (m *Model) generateCode() (string, error) {
 // - products -> package: products, struct: Product
 // - user_role_permissions -> package: user, struct: RolePermission
 func (m *Model) generateNames(tableName string) (packageName, structName string) {
+	tableName = m.cleanIdentifier(tableName)
 	parts := strings.Split(tableName, "_")
 
 	switch len(parts) {
@@ -412,6 +549,167 @@ func (m *Model) generateNames(tableName string) (packageName, structName string)
 	}
 
 	return packageName, structName
+}
+
+func (m *Model) parseCreateTableLine(line string) {
+	re := regexp.MustCompile(`(?i)^create\s+table\s+(?:if\s+not\s+exists\s+)?(.+?)(?:\s*\(|$)`)
+	matches := re.FindStringSubmatch(strings.TrimSpace(line))
+	if len(matches) < 2 {
+		return
+	}
+
+	schemaName, tableName := m.parseQualifiedName(matches[1])
+	m.SchemaName = schemaName
+	m.TableName = tableName
+}
+
+func (m *Model) parseQualifiedName(identifier string) (string, string) {
+	raw := strings.TrimSpace(identifier)
+	raw = strings.TrimSuffix(raw, "(")
+	raw = strings.TrimSpace(raw)
+	raw = strings.Trim(raw, ",")
+
+	parts := strings.Split(raw, ".")
+	if len(parts) == 1 {
+		return "", m.cleanIdentifier(parts[0])
+	}
+
+	schemaName := m.cleanIdentifier(parts[len(parts)-2])
+	tableName := m.cleanIdentifier(parts[len(parts)-1])
+	return schemaName, tableName
+}
+
+func (m *Model) cleanIdentifier(identifier string) string {
+	cleaned := strings.TrimSpace(identifier)
+	cleaned = strings.TrimSuffix(cleaned, ",")
+	cleaned = strings.Trim(cleaned, "`\"")
+	return cleaned
+}
+
+func (m *Model) qualifiedTableName() string {
+	if m.SchemaName == "" {
+		return m.TableName
+	}
+	return m.SchemaName + "." + m.TableName
+}
+
+func (m *Model) extractTypeDefinition(parts []string) string {
+	if len(parts) < 2 {
+		return ""
+	}
+
+	stopWords := map[string]struct{}{
+		"not":        {},
+		"null":       {},
+		"default":    {},
+		"comment":    {},
+		"constraint": {},
+		"primary":    {},
+		"unique":     {},
+		"references": {},
+		"check":      {},
+		"generated":  {},
+		"collate":    {},
+	}
+
+	typeParts := make([]string, 0, 3)
+	for _, part := range parts[1:] {
+		normalized := strings.ToLower(strings.Trim(part, ","))
+		if _, isStopWord := stopWords[normalized]; isStopWord {
+			break
+		}
+		typeParts = append(typeParts, normalized)
+		if normalized == "zone" || normalized == "precision" {
+			break
+		}
+	}
+
+	return strings.Join(typeParts, " ")
+}
+
+func (m *Model) extractPrimaryKeyName(line string) string {
+	re := regexp.MustCompile(`(?i)primary\s+key\s*\(([^)]+)\)`)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) < 2 {
+		return ""
+	}
+
+	columns := strings.Split(matches[1], ",")
+	if len(columns) != 1 {
+		return ""
+	}
+
+	return m.cleanIdentifier(columns[0])
+}
+
+func (m *Model) markPrimaryKey(columnName string) {
+	for i := range m.TableFields {
+		if m.TableFields[i].JsonName != columnName {
+			continue
+		}
+		m.TableFields[i].IsPrimaryKey = true
+		m.TableFields[i].IsNullable = false
+		fieldType, importPath := m.getGoType(m.TableFields[i].SQLType, m.TableFields[i].IsUnsigned, m.TableFields[i].IsNullable)
+		m.TableFields[i].Type = fieldType
+		if importPath != "" {
+			m.Imports[importPath] = struct{}{}
+		}
+		m.HasPrimaryKey = true
+		m.PrimaryKeyName = columnName
+		m.IDType = m.TableFields[i].Type
+		m.TableFields[i].GormTag = m.generateGormTag(&m.TableFields[i], m.TableFields[i].SQLType)
+		return
+	}
+}
+
+func (m *Model) canUseGormModel() bool {
+	requiredFields := map[string]bool{
+		"id":         false,
+		"created_at": false,
+		"updated_at": false,
+		"deleted_at": false,
+	}
+
+	for _, field := range m.TableFields {
+		if _, ok := requiredFields[field.JsonName]; ok {
+			requiredFields[field.JsonName] = true
+		}
+	}
+
+	for _, exists := range requiredFields {
+		if !exists {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (m *Model) templateFields() []Field {
+	if !m.UseGormModel {
+		return m.TableFields
+	}
+
+	fields := make([]Field, 0, len(m.TableFields))
+	for _, field := range m.TableFields {
+		switch field.JsonName {
+		case "id", "created_at", "updated_at", "deleted_at":
+			continue
+		default:
+			fields = append(fields, field)
+		}
+	}
+
+	return fields
+}
+
+func (m *Model) primaryKeyField() *Field {
+	for i := range m.TableFields {
+		if m.TableFields[i].IsPrimaryKey {
+			return &m.TableFields[i]
+		}
+	}
+	return nil
 }
 
 // readSQLFile reads the content of the specified SQL file.
@@ -592,7 +890,9 @@ import (
 )
 
 type {{.StructName}} struct {
+	{{- if .UseGormModel}}
 	gorm.Model
+	{{- end}}
 	{{"\n"}}
 	{{- range .TableFields}}
 	{{.Name}} {{.Type}} ` + "`gorm:\"{{.GormTag}}\" json:\"{{.JsonName}}\"`" + ` {{.Comment}}
@@ -679,7 +979,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 	}
 
 	// Perform the database query with context.
-	if err := query.Order("id desc").First(&{{.StructNameLower}}).Error; err != nil {
+	if err := query.Order("{{.PrimaryKeyName}} desc").First(&{{.StructNameLower}}).Error; err != nil {
 		// If no record is found, return nil without an error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -700,13 +1000,13 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 // Returns:
 // 	- uint: ID of the created {{.StructNameLower}}.
 // 	- error: error if the insert operation fails, otherwise nil.
-func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, db *gorm.DB) (uint, error) {
+func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, db *gorm.DB) ({{.IDType}}, error) {
 	// Perform the database insert operation with context.
 	if err := db.WithContext(ctx).Create({{.StructNameFirstLetter}}).Error; err != nil {
-		return 0, fmt.Errorf("create failed: %w", err)
+		return *new({{.IDType}}), fmt.Errorf("create failed: %w", err)
 	}
 
-	return {{.StructNameFirstLetter}}.ID, nil
+	return {{.StructNameFirstLetter}}.{{.PrimaryKeyFieldName}}, nil
 }
 
 // Delete removes the {{.StructNameLower}} from the database.
@@ -747,12 +1047,19 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Updates(ctx context.Context, 
 	// Apply Where conditions if set
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
-	} else if {{.StructNameFirstLetter}}.ID > 0 {
-		// Use ID for updates if available (most common case)
-		query = query.Where("id = ?", {{.StructNameFirstLetter}}.ID)
 	} else {
+		{{- if .HasPrimaryKey}}
+		if {{.StructNameFirstLetter}}.{{.PrimaryKeyFieldName}} != *new({{.IDType}}) {
+			// Use primary key for updates if available.
+			query = query.Where("{{.PrimaryKeyName}} = ?", {{.StructNameFirstLetter}}.{{.PrimaryKeyFieldName}})
+		} else {
+			// Use struct fields as condition
+			query = query.Where({{.StructNameFirstLetter}})
+		}
+		{{- else}}
 		// Use struct fields as condition
 		query = query.Where({{.StructNameFirstLetter}})
+		{{- end}}
 	}
 
 	// Perform the database update operation with context.

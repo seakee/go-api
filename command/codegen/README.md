@@ -5,16 +5,17 @@ English | [中文](README_ZH.MD)
 ---
 ### Overview
 
-The Go API Code Generator is a powerful tool that automatically generates Go model and repository code from MySQL CREATE TABLE statements. It parses SQL files and creates corresponding Go structs with GORM tags, along with repository interfaces and implementations for common database operations.
+The Go API Code Generator generates Go model and repository code from SQL `CREATE TABLE` statements. It currently supports MySQL and a minimal PostgreSQL subset. It parses SQL files and creates corresponding Go structs with GORM tags, along with repository interfaces and implementations for common database operations.
 
 ### Features
 
-- **SQL Parsing**: Supports complex field type definitions (VARCHAR(255), DECIMAL(10,2), etc.)
-- **Type Mapping**: Comprehensive mapping from MySQL types to Go types
+- **SQL Parsing**: Supports common MySQL and PostgreSQL field type definitions
+- **Type Mapping**: Maps common SQL types to Go types
 - **GORM Integration**: Automatic generation of GORM tags (column, size, not null, default, etc.)
 - **Comment Support**: Preserves SQL comments as Go struct field comments
 - **Repository Generation**: Automatic generation of repository interfaces and implementations
 - **Smart Update Logic**: Generates update methods that only update non-zero fields
+- **Explicit Field Updates**: Generates `UpdateFields` for safe zero-value updates
 - **Flexible List Methods**: List methods that accept struct parameters for query conditions
 - **Batch Processing**: Process single files or entire directories
 - **Force Overwrite**: Option to overwrite existing files
@@ -37,6 +38,7 @@ go build -o codegen ./command/codegen/handler.go
 **Available Options:**
 
 - `-force`: Force overwrite existing files (default: false)
+- `-dialect`: SQL dialect, `mysql` or `postgres` (default: `mysql`)
 - `-name`: SQL file name (without .sql extension) to generate code for
 - `-sql`: SQL directory path (default: "bin/data/sql")
 - `-model`: Model output directory (default: "app/model")
@@ -48,6 +50,11 @@ go build -o codegen ./command/codegen/handler.go
 **Generate code for a single SQL file:**
 ```bash
 ./codegen -name auth_app
+```
+
+**Generate code for a PostgreSQL SQL file:**
+```bash
+./codegen -dialect=postgres -sql bin/data/sql/postgres -name oauth_app
 ```
 
 **Generate code for all SQL files in directory:**
@@ -62,7 +69,9 @@ go build -o codegen ./command/codegen/handler.go
 
 ### SQL File Format
 
-The generator expects standard MySQL CREATE TABLE statements. Here's an example:
+#### MySQL Example
+
+The generator supports standard MySQL `CREATE TABLE` statements. Example:
 
 ```sql
 CREATE TABLE `auth_app`
@@ -78,6 +87,22 @@ CREATE TABLE `auth_app`
     PRIMARY KEY (`id`),
     KEY `app_id` (`app_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = 'Application Information Table';
+```
+
+#### PostgreSQL Example
+
+The generator also supports a minimal PostgreSQL subset for single-table DDL. Example:
+
+```sql
+CREATE TABLE IF NOT EXISTS "public"."oauth_app"
+(
+    "app_uuid"   uuid PRIMARY KEY,
+    "app_name"   varchar(80)              NOT NULL,
+    "payload"    jsonb                    DEFAULT NULL,
+    "status"     integer                  NOT NULL DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" timestamp with time zone DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ### Generated Output
@@ -198,6 +223,49 @@ func (r *appRepo) List(ctx context.Context, app *auth.App) ([]auth.App, error) {
 | double | float64 | |
 | timestamp, datetime | time.Time | |
 | date | time.Time | |
+
+### Supported PostgreSQL Types
+
+| PostgreSQL Type | Go Type | Notes |
+|-----------------|---------|-------|
+| smallserial | int16 | |
+| serial | int32 | |
+| bigserial | int64 | |
+| integer | int32 | |
+| bigint | int64 | |
+| uuid | string | minimal support |
+| varchar | string / *string | nullable columns become pointers |
+| text | string / *string | |
+| boolean | bool / *bool | |
+| numeric | decimal.Decimal / *decimal.Decimal | |
+| jsonb | datatypes.JSON / *datatypes.JSON | |
+| bytea | []byte | |
+| timestamp with time zone, timestamptz | time.Time / *time.Time | |
+| timestamp without time zone | time.Time / *time.Time | |
+| date | time.Time / *time.Time | |
+
+### PostgreSQL Scope
+
+Current PostgreSQL support is intentionally limited. It supports:
+
+- single `CREATE TABLE` statements
+- optional schema names
+- quoted identifiers
+- single-column primary keys
+- common scalar PostgreSQL types listed above
+
+It does not yet support:
+
+- composite primary keys
+- array types
+- `COMMENT ON`
+- split definitions via `ALTER TABLE`
+- advanced PostgreSQL-specific features such as enums or domains
+
+### TODO
+
+- Add PostgreSQL generated output snippets to the README so users can quickly compare input and output.
+- Extend PostgreSQL support in a future iteration, prioritizing `COMMENT ON` and array types.
 | json | string | |
 | blob | []byte | |
 
