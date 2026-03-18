@@ -792,9 +792,9 @@ Content-Type: application/json
 - `user/role/permission` 使用 `page` + `page_size`（默认 `1` + `10`，最大 `100`），返回 `{ "list": [...], "total": n }`
 - `record` 使用 `page` + `size`（默认 `1` + `10`，最大 `100`），返回 `{ "items": [...], "total": n }`
 
-> 更完整的请求参数、响应示例和模块错误码请查看 `docs/Admin-System-Management.md`。
+> 更完整的请求参数、响应示例和模块错误码请查看 `docs/Admin-System-Management-zh.md`。
 >
-> 管理端鉴权接口请查看 `docs/Admin-Auth.md`。其中密码相关字段（`/go-api/internal/admin/auth/token` 的 `grant_type=password`、`/password/reset`、`/password`、以及未开启 TFA 时的 `/identifier`）前端必须传 `md5(明文密码)`。
+> 管理端鉴权接口请查看 `docs/Admin-Auth-zh.md`。其中密码相关字段（`/go-api/internal/admin/auth/token` 的 `grant_type=password`、`/password/reset`、`/password`、以及未开启 TFA 时的 `/identifier`）前端必须传 `md5(明文密码)`。
 
 #### 健康检查端点
 
