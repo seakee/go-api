@@ -1,6 +1,7 @@
 {
   "system": {
     "name": "go-api",
+    "route_prefix": "go-api",
     "run_mode": "debug",
     "http_port": ":8080",
     "read_timeout": 60,
