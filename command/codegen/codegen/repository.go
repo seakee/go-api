@@ -25,6 +25,8 @@ type Repository struct {
 	StructName      string              // The name of the repository struct
 	ModelStructName string              // The name of the model struct
 	TableName       string              // The name of the database table
+	IDType          string              // The primary key type used by generated methods
+	PrimaryKeyName  string              // The primary key column name used by generated methods
 }
 
 // NewRepository creates a new instance of Repository.
@@ -36,6 +38,8 @@ func NewRepository(model *Model) *Repository {
 		ModelStructName: model.StructName,
 		TableName:       model.TableName,
 		Imports:         make(map[string]struct{}),
+		IDType:          model.IDType,
+		PrimaryKeyName:  model.PrimaryKeyName,
 	}
 }
 
@@ -53,6 +57,11 @@ func (r *Repository) generateCode() (string, error) {
 	r.StructName = r.Model.StructName
 	r.ModelStructName = r.Model.StructName
 	r.TableName = r.Model.TableName
+	r.IDType = r.Model.IDType
+	r.PrimaryKeyName = r.Model.PrimaryKeyName
+	if r.PrimaryKeyName == "" {
+		r.PrimaryKeyName = "id"
+	}
 
 	// Add required imports
 	r.Imports["errors"] = struct{}{}
@@ -80,6 +89,9 @@ func (r *Repository) generateCode() (string, error) {
 		"Imports":               r.Imports,
 		"FieldChecks":           fieldChecks,
 		"QueryConditions":       queryConditions,
+		"IDType":                r.IDType,
+		"PrimaryKeyName":        r.PrimaryKeyName,
+		"PrimaryKeyFieldName":   r.primaryKeyFieldName(),
 	}
 
 	// Parse and execute the template
@@ -96,6 +108,15 @@ func (r *Repository) generateCode() (string, error) {
 	return buf.String(), nil
 }
 
+func (r *Repository) primaryKeyFieldName() string {
+	for _, field := range r.Model.TableFields {
+		if field.JsonName == r.PrimaryKeyName {
+			return field.Name
+		}
+	}
+	return "ID"
+}
+
 // generateFieldChecks generates field check code for the Update method
 func (r *Repository) generateFieldChecks() string {
 	var checks []string
@@ -103,7 +124,7 @@ func (r *Repository) generateFieldChecks() string {
 
 	for _, field := range r.Model.TableFields {
 		// Skip ID field as it's used for identification
-		if strings.ToLower(field.Name) == "id" {
+		if field.JsonName == r.PrimaryKeyName {
 			continue
 		}
 
@@ -138,6 +159,10 @@ func (r *Repository) generateFieldChecks() string {
 		case "time.Time":
 			checkCondition = fmt.Sprintf(`if !%s.%s.IsZero() {`, modelStructNameLower, field.Name)
 		case "*time.Time":
+			checkCondition = fmt.Sprintf(`if %s.%s != nil {`, modelStructNameLower, field.Name)
+		case "decimal.Decimal", "datatypes.JSON", "[]byte":
+			checkCondition = fmt.Sprintf(`if %s.%s != nil {`, modelStructNameLower, field.Name)
+		case "*decimal.Decimal", "*datatypes.JSON":
 			checkCondition = fmt.Sprintf(`if %s.%s != nil {`, modelStructNameLower, field.Name)
 		default:
 			// For other types, use nil check
@@ -185,6 +210,10 @@ func (r *Repository) generateQueryConditions() string {
 		case "time.Time":
 			conditionCheck = fmt.Sprintf(`if !%s.%s.IsZero() {`, modelStructNameLower, field.Name)
 		case "*time.Time":
+			conditionCheck = fmt.Sprintf(`if %s.%s != nil {`, modelStructNameLower, field.Name)
+		case "decimal.Decimal", "datatypes.JSON", "[]byte":
+			conditionCheck = fmt.Sprintf(`if %s.%s != nil {`, modelStructNameLower, field.Name)
+		case "*decimal.Decimal", "*datatypes.JSON":
 			conditionCheck = fmt.Sprintf(`if %s.%s != nil {`, modelStructNameLower, field.Name)
 		default:
 			// For other types, use nil check
@@ -341,19 +370,22 @@ type {{.StructName}}Repo interface {
 	Get{{.ModelStructName}}(ctx context.Context, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) (*{{.LowerStructName}}.{{.ModelStructName}}, error)
 
 	// Create inserts a new {{.ModelStructNameLower}} into the database.
-	Create(ctx context.Context, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) (uint, error)
+	Create(ctx context.Context, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) ({{.IDType}}, error)
 
 	// Update updates an existing {{.ModelStructNameLower}} in the database.
-	Update(ctx context.Context, id uint, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) error
+	Update(ctx context.Context, id {{.IDType}}, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) error
+
+	// UpdateFields updates an existing {{.ModelStructNameLower}} with explicit field values.
+	UpdateFields(ctx context.Context, id {{.IDType}}, data map[string]interface{}) error
 
 	// Delete deletes a {{.ModelStructNameLower}} by its ID.
-	Delete(ctx context.Context, id uint) error
+	Delete(ctx context.Context, id {{.IDType}}) error
 
 	// List retrieves {{.ModelStructNameLower}} records based on query conditions.
 	List(ctx context.Context, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) ([]{{.LowerStructName}}.{{.ModelStructName}}, error)
 
 	// GetByID retrieves a {{.ModelStructNameLower}} by its ID.
-	GetByID(ctx context.Context, id uint) (*{{.LowerStructName}}.{{.ModelStructName}}, error)
+	GetByID(ctx context.Context, id {{.IDType}}) (*{{.LowerStructName}}.{{.ModelStructName}}, error)
 }
 
 // {{.ModelStructNameLower}}Repo implements the {{.StructName}}Repo interface.
@@ -402,7 +434,7 @@ func (r *{{.ModelStructNameLower}}Repo) Get{{.ModelStructName}}(ctx context.Cont
 // Returns:
 //   - uint: the ID of the created {{.ModelStructNameLower}}.
 //   - error: error if the creation fails, otherwise nil.
-func (r *{{.ModelStructNameLower}}Repo) Create(ctx context.Context, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) (uint, error) {
+func (r *{{.ModelStructNameLower}}Repo) Create(ctx context.Context, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) ({{.IDType}}, error) {
 	return {{.ModelStructNameLower}}.Create(ctx, r.db)
 }
 
@@ -415,9 +447,9 @@ func (r *{{.ModelStructNameLower}}Repo) Create(ctx context.Context, {{.ModelStru
 // Returns:
 //   - *{{.LowerStructName}}.{{.ModelStructName}}: pointer to the retrieved {{.ModelStructNameLower}}, or nil if not found.
 //   - error: error if the query fails, otherwise nil.
-func (r *{{.ModelStructNameLower}}Repo) GetByID(ctx context.Context, id uint) (*{{.LowerStructName}}.{{.ModelStructName}}, error) {
+func (r *{{.ModelStructNameLower}}Repo) GetByID(ctx context.Context, id {{.IDType}}) (*{{.LowerStructName}}.{{.ModelStructName}}, error) {
 	{{.ModelStructNameLower}} := &{{.LowerStructName}}.{{.ModelStructName}}{}
-	return {{.ModelStructNameLower}}.Where("id = ?", id).First(ctx, r.db)
+	return {{.ModelStructNameLower}}.Where("{{.PrimaryKeyName}} = ?", id).First(ctx, r.db)
 }
 
 // Update updates an existing {{.ModelStructNameLower}} record using the model's Updates method.
@@ -432,7 +464,7 @@ func (r *{{.ModelStructNameLower}}Repo) GetByID(ctx context.Context, id uint) (*
 //
 // Note: This method will only update non-zero value fields. You need to manually check
 // each field and add it to the data map if it's not a zero value.
-func (r *{{.ModelStructNameLower}}Repo) Update(ctx context.Context, id uint, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) error {
+func (r *{{.ModelStructNameLower}}Repo) Update(ctx context.Context, id {{.IDType}}, {{.ModelStructNameLower}} *{{.LowerStructName}}.{{.ModelStructName}}) error {
 	data := make(map[string]interface{})
 	
 {{.FieldChecks}}
@@ -442,7 +474,19 @@ func (r *{{.ModelStructNameLower}}Repo) Update(ctx context.Context, id uint, {{.
 	}
 
 	updateModel := &{{.LowerStructName}}.{{.ModelStructName}}{}
-	updateModel.ID = id
+	updateModel.{{.PrimaryKeyFieldName}} = id
+
+	return updateModel.Updates(ctx, r.db, data)
+}
+
+// UpdateFields updates a {{.ModelStructNameLower}} with explicit field values.
+func (r *{{.ModelStructNameLower}}Repo) UpdateFields(ctx context.Context, id {{.IDType}}, data map[string]interface{}) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	updateModel := &{{.LowerStructName}}.{{.ModelStructName}}{}
+	updateModel.{{.PrimaryKeyFieldName}} = id
 
 	return updateModel.Updates(ctx, r.db, data)
 }
@@ -455,9 +499,9 @@ func (r *{{.ModelStructNameLower}}Repo) Update(ctx context.Context, id uint, {{.
 //
 // Returns:
 //   - error: error if the deletion fails, otherwise nil.
-func (r *{{.ModelStructNameLower}}Repo) Delete(ctx context.Context, id uint) error {
+func (r *{{.ModelStructNameLower}}Repo) Delete(ctx context.Context, id {{.IDType}}) error {
 	{{.ModelStructNameLower}} := &{{.LowerStructName}}.{{.ModelStructName}}{}
-	return {{.ModelStructNameLower}}.Where("id = ?", id).Delete(ctx, r.db)
+	return {{.ModelStructNameLower}}.Where("{{.PrimaryKeyName}} = ?", id).Delete(ctx, r.db)
 }
 
 // List retrieves {{.ModelStructNameLower}} records based on query conditions using the model's List method.

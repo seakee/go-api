@@ -17,6 +17,7 @@ func TestRepository_generateCode(t *testing.T) {
 		PackageName: "auth",
 		StructName:  "App",
 		TableName:   "auth_app",
+		IDType:      "uint",
 		TableFields: []Field{
 			{
 				Name:    "ID",
@@ -45,18 +46,18 @@ func TestRepository_generateCode(t *testing.T) {
 	// Verify the generated code contains expected elements
 	expectedElements := []string{
 		"package auth",
-		"type AppRepository struct",
-		"NewAppRepository",
-		"func (a *AppRepository) Create",
-		"func (a *AppRepository) GetByID",
-		"func (a *AppRepository) Update",
-		"func (a *AppRepository) Delete",
-		"func (a *AppRepository) List",
-		"func (a *AppRepository) Count",
+		"type AppRepo interface",
+		"type appRepo struct",
+		"NewAppRepo",
+		"func (r *appRepo) Create",
+		"func (r *appRepo) GetByID",
+		"func (r *appRepo) Update",
+		"func (r *appRepo) UpdateFields",
+		"func (r *appRepo) Delete",
+		"func (r *appRepo) List",
 		"gorm.io/gorm",
 		"context",
-		"fmt",
-		"errors",
+		"github.com/sk-pkg/redis",
 	}
 
 	for _, element := range expectedElements {
@@ -72,6 +73,7 @@ func TestRepository_WriteRepositoryFile(t *testing.T) {
 		PackageName: "test",
 		StructName:  "TestModel",
 		TableName:   "test_model",
+		IDType:      "uint",
 	}
 
 	// Create repository instance
@@ -117,6 +119,7 @@ func TestRepository_Generate(t *testing.T) {
 		PackageName: "auth",
 		StructName:  "App",
 		TableName:   "auth_app",
+		IDType:      "uint",
 		TableFields: []Field{
 			{
 				Name:    "ID",
@@ -159,21 +162,13 @@ func TestRepository_Generate(t *testing.T) {
 
 	contentStr := string(content)
 	expectedMethods := []string{
-		"NewAppRepository",
+		"NewAppRepo",
 		"Create",
 		"GetByID",
 		"Update",
-		"UpdateFields",
 		"Delete",
 		"List",
-		"ListWithPagination",
-		"Count",
-		"FindByCondition",
-		"FirstByCondition",
-		"BatchCreate",
-		"BatchDelete",
-		"Exists",
-		"Transaction",
+		"UpdateFields",
 	}
 
 	for _, method := range expectedMethods {
@@ -189,6 +184,7 @@ func TestNewRepository(t *testing.T) {
 		PackageName: "test",
 		StructName:  "TestModel",
 		TableName:   "test_model",
+		IDType:      "uint",
 	}
 
 	// Create repository instance
@@ -205,5 +201,56 @@ func TestNewRepository(t *testing.T) {
 
 	if repo.Imports == nil {
 		t.Error("Repository imports map is nil")
+	}
+}
+
+func TestRepository_GenerateCodeUsesCustomIDType(t *testing.T) {
+	model := &Model{
+		PackageName:    "job",
+		StructName:     "Task",
+		TableName:      "job_task",
+		IDType:         "int64",
+		PrimaryKeyName: "id",
+		TableFields: []Field{
+			{Name: "ID", JsonName: "id", Type: "int64"},
+			{Name: "Name", JsonName: "name", Type: "string"},
+		},
+	}
+
+	repo := NewRepository(model)
+	code, err := repo.generateCode()
+	if err != nil {
+		t.Fatalf("Failed to generate repository code: %v", err)
+	}
+
+	if !strings.Contains(code, "GetByID(ctx context.Context, id int64)") {
+		t.Fatalf("expected generated repository to use int64 IDs, got:\n%s", code)
+	}
+}
+
+func TestRepository_GenerateCodeUsesPostgresPrimaryKeyName(t *testing.T) {
+	model := &Model{
+		PackageName:    "oauth",
+		StructName:     "App",
+		TableName:      "oauth_apps",
+		IDType:         "string",
+		PrimaryKeyName: "app_uuid",
+		TableFields: []Field{
+			{Name: "AppUuid", JsonName: "app_uuid", Type: "string", IsPrimaryKey: true},
+			{Name: "Name", JsonName: "name", Type: "string"},
+		},
+	}
+
+	repo := NewRepository(model)
+	code, err := repo.generateCode()
+	if err != nil {
+		t.Fatalf("Failed to generate repository code: %v", err)
+	}
+
+	if !strings.Contains(code, `Where("app_uuid = ?", id)`) {
+		t.Fatalf("expected generated repository to query by postgres primary key, got:\n%s", code)
+	}
+	if !strings.Contains(code, "updateModel.AppUuid = id") {
+		t.Fatalf("expected generated repository to assign custom primary key field, got:\n%s", code)
 	}
 }
