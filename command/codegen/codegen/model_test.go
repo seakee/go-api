@@ -7,6 +7,7 @@ package codegen
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -565,6 +566,102 @@ func TestModel_generateCodeWithoutPrimaryKeyCreateNoInvalidField(t *testing.T) {
 	}
 	if !strings.Contains(code, "return *new(uint), nil") {
 		t.Fatalf("create branch should return typed zero value when no primary key, got:\n%s", code)
+	}
+}
+
+func TestModel_generateCodeCreateUsesImplicitIDField(t *testing.T) {
+	m := NewModelWithDialect("postgres")
+	sqlContent := `CREATE TABLE logs (
+		id bigint generated always as identity,
+		message text NOT NULL
+	);`
+
+	if err := m.parseSQL(sqlContent); err != nil {
+		t.Fatalf("parseSQL() error = %v", err)
+	}
+
+	if m.HasPrimaryKey {
+		t.Fatal("implicit id should not be treated as explicit primary key metadata")
+	}
+	if m.IDType != "int64" {
+		t.Fatalf("IDType = %s, want int64", m.IDType)
+	}
+
+	code, err := m.generateCode()
+	if err != nil {
+		t.Fatalf("generateCode() error = %v", err)
+	}
+
+	if !strings.Contains(code, "func (l *Log) Create(ctx context.Context, db *gorm.DB) (int64, error)") {
+		t.Fatalf("expected create signature to use implicit id type, got:\n%s", code)
+	}
+	matched, err := regexp.MatchString(`return l\.(ID|Id), nil`, code)
+	if err != nil {
+		t.Fatalf("regexp.MatchString() error = %v", err)
+	}
+	if !matched {
+		t.Fatalf("expected create branch to return implicit id field, got:\n%s", code)
+	}
+	if !strings.Contains(code, `query.Order("id desc").First(&log).Error`) {
+		t.Fatalf("expected Last to order by implicit id field, got:\n%s", code)
+	}
+}
+
+func TestModel_generateCodeWithoutPrimaryKeyOrIDLastReturnsError(t *testing.T) {
+	m := NewModelWithDialect("postgres")
+	sqlContent := `CREATE TABLE logs (
+		message text NOT NULL,
+		created_at bigint NOT NULL
+	);`
+
+	if err := m.parseSQL(sqlContent); err != nil {
+		t.Fatalf("parseSQL() error = %v", err)
+	}
+
+	code, err := m.generateCode()
+	if err != nil {
+		t.Fatalf("generateCode() error = %v", err)
+	}
+
+	if strings.Contains(code, "query.Last(&log).Error") {
+		t.Fatalf("Last should not fall back to query.Last without an ordering field, got:\n%s", code)
+	}
+	if !strings.Contains(code, `return nil, fmt.Errorf("find last failed: no primary key or id field available for ordering")`) {
+		t.Fatalf("expected Last to return a clear error when no ordering field exists, got:\n%s", code)
+	}
+}
+
+func TestModel_generateCodeCreateUsesEmbeddedGormModelIDForImplicitID(t *testing.T) {
+	m := NewModelWithDialect("mysql")
+	sqlContent := `CREATE TABLE auth_app (
+		id int NOT NULL AUTO_INCREMENT,
+		app_id varchar(30) NOT NULL,
+		created_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+		deleted_at timestamp NULL DEFAULT NULL
+	);`
+
+	if err := m.parseSQL(sqlContent); err != nil {
+		t.Fatalf("parseSQL() error = %v", err)
+	}
+
+	if !m.UseGormModel {
+		t.Fatal("expected standard columns to embed gorm.Model")
+	}
+	if m.IDType != "uint" {
+		t.Fatalf("IDType = %s, want uint", m.IDType)
+	}
+
+	code, err := m.generateCode()
+	if err != nil {
+		t.Fatalf("generateCode() error = %v", err)
+	}
+
+	if !strings.Contains(code, "func (a *App) Create(ctx context.Context, db *gorm.DB) (uint, error)") {
+		t.Fatalf("expected create signature to use embedded gorm.Model ID type, got:\n%s", code)
+	}
+	if !strings.Contains(code, "return a.ID, nil") {
+		t.Fatalf("expected create branch to return embedded gorm.Model ID, got:\n%s", code)
 	}
 }
 

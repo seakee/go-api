@@ -256,8 +256,8 @@ func (m *Model) parseSQL(sql string) error {
 	}
 
 	m.UseGormModel = m.canUseGormModel()
-	if m.IDType == "" && m.HasPrimaryKey {
-		m.IDType = "uint"
+	if prioritizedField := m.prioritizedField(); prioritizedField != nil {
+		m.IDType = m.generatedIDType(prioritizedField)
 	} else if m.IDType == "" {
 		m.IDType = "uint"
 	}
@@ -295,6 +295,7 @@ func (m *Model) parseFieldDefinition(originalLine, fieldName string, parts []str
 		upperLine := strings.ToUpper(originalLine)
 		if strings.Contains(upperLine, "GENERATED") && strings.Contains(upperLine, "AS IDENTITY") {
 			field.IsAutoIncrement = true
+			field.IsNullable = false
 		}
 		if strings.HasPrefix(strings.ToLower(typeStr), "serial") || strings.HasPrefix(strings.ToLower(typeStr), "bigserial") || strings.HasPrefix(strings.ToLower(typeStr), "smallserial") {
 			field.IsAutoIncrement = true
@@ -479,11 +480,18 @@ func (m *Model) generateCode() (string, error) {
 	if primaryKeyField := m.primaryKeyField(); primaryKeyField != nil {
 		primaryKeyFieldName = primaryKeyField.Name
 	}
+	prioritizedFieldName := ""
+	hasPrioritizedField := false
+	prioritizedField := m.prioritizedField()
+	if prioritizedField != nil {
+		hasPrioritizedField = true
+		prioritizedFieldName = m.generatedFieldName(prioritizedField)
+	}
 
 	structNameFirstLetter := strings.ToLower(m.StructName[0:1])
 	defaultOrderExpr := ""
-	if m.HasPrimaryKey {
-		defaultOrderExpr = fmt.Sprintf("%s desc", primaryKeyName)
+	if prioritizedField != nil {
+		defaultOrderExpr = fmt.Sprintf("%s desc", prioritizedField.JsonName)
 	}
 
 	// Parse the model template.
@@ -502,6 +510,8 @@ func (m *Model) generateCode() (string, error) {
 		"IDType":                m.IDType,
 		"PrimaryKeyName":        primaryKeyName,
 		"PrimaryKeyFieldName":   primaryKeyFieldName,
+		"PrioritizedFieldName":  prioritizedFieldName,
+		"HasPrioritizedField":   hasPrioritizedField,
 		"DefaultOrderExpr":      defaultOrderExpr,
 		"HasPrimaryKey":         m.HasPrimaryKey,
 	})
@@ -725,6 +735,40 @@ func (m *Model) primaryKeyField() *Field {
 		}
 	}
 	return nil
+}
+
+func (m *Model) prioritizedField() *Field {
+	if primaryKeyField := m.primaryKeyField(); primaryKeyField != nil {
+		return primaryKeyField
+	}
+
+	for i := range m.TableFields {
+		if strings.EqualFold(m.TableFields[i].JsonName, "id") {
+			return &m.TableFields[i]
+		}
+	}
+
+	return nil
+}
+
+func (m *Model) generatedIDType(field *Field) string {
+	if field == nil {
+		return "uint"
+	}
+	if m.UseGormModel && strings.EqualFold(field.JsonName, "id") {
+		return "uint"
+	}
+	return field.Type
+}
+
+func (m *Model) generatedFieldName(field *Field) string {
+	if field == nil {
+		return ""
+	}
+	if m.UseGormModel && strings.EqualFold(field.JsonName, "id") {
+		return "ID"
+	}
+	return field.Name
 }
 
 // readSQLFile reads the content of the specified SQL file.
@@ -972,7 +1016,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) First(ctx context.Context, db
 	return &{{.StructNameLower}}, nil
 }
 
-// Last retrieves the last {{.StructNameLower}} matching the criteria from the database, ordered by ID in descending order.
+// Last retrieves the last {{.StructNameLower}} matching the criteria from the database, ordered by primary key or id in descending order when available.
 //
 // Parameters:
 // 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
@@ -994,11 +1038,12 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 	}
 
 	// Perform the database query with context.
-	{{- if .HasPrimaryKey}}
-	if err := query.Order("{{.PrimaryKeyName}} desc").First(&{{.StructNameLower}}).Error; err != nil {
+	{{- if .HasPrioritizedField}}
+	if err := query.Order("{{.DefaultOrderExpr}}").First(&{{.StructNameLower}}).Error; err != nil {
 	{{- else}}
-	if err := query.Last(&{{.StructNameLower}}).Error; err != nil {
+	return nil, fmt.Errorf("find last failed: no primary key or id field available for ordering")
 	{{- end}}
+	{{- if .HasPrioritizedField}}
 		// If no record is found, return nil without an error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -1006,6 +1051,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 		// Return the error if the query fails.
 		return nil, fmt.Errorf("find last failed: %w", err)
 	}
+	{{- end}}
 
 	return &{{.StructNameLower}}, nil
 }
@@ -1025,8 +1071,8 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, d
 		return *new({{.IDType}}), fmt.Errorf("create failed: %w", err)
 	}
 
-	{{- if .HasPrimaryKey}}
-	return {{.StructNameFirstLetter}}.{{.PrimaryKeyFieldName}}, nil
+	{{- if .HasPrioritizedField}}
+	return {{.StructNameFirstLetter}}.{{.PrioritizedFieldName}}, nil
 	{{- else}}
 	return *new({{.IDType}}), nil
 	{{- end}}
