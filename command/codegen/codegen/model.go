@@ -40,17 +40,18 @@ type Field struct {
 
 // Model represents the structure of a database table.
 type Model struct {
-	PackageName    string              // The package name for the generated Go file
-	Imports        map[string]struct{} // Imports required by the Go file
-	StructName     string              // The name of the Go struct
-	TableName      string              // The unqualified table name
-	SchemaName     string              // Optional schema name
-	TableFields    []Field             // The fields of the table
-	UseGormModel   bool                // Whether the generated model can embed gorm.Model
-	IDType         string              // Primary key type used by generated methods
-	PrimaryKeyName string              // Primary key column name
-	HasPrimaryKey  bool                // Whether the table defines a single-column primary key
-	Dialect        string              // SQL dialect used by the parser
+	PackageName            string              // The package name for the generated Go file
+	Imports                map[string]struct{} // Imports required by the Go file
+	StructName             string              // The name of the Go struct
+	TableName              string              // The unqualified table name
+	SchemaName             string              // Optional schema name
+	TableFields            []Field             // The fields of the table
+	UseGormModel           bool                // Whether the generated model can embed gorm.Model
+	IDType                 string              // Primary key type used by generated methods
+	PrimaryKeyName         string              // Single-column primary key column name
+	HasPrimaryKey          bool                // Whether the table defines a single-column primary key
+	HasCompositePrimaryKey bool                // Whether the table defines a composite primary key
+	Dialect                string              // SQL dialect used by the parser
 }
 
 // NewModel creates a new instance of Model.
@@ -94,6 +95,9 @@ func (m *Model) getGoType(sqlType string, isUnsigned, isNullable bool) (string, 
 	}
 
 	if m.Dialect == "postgres" {
+		if isPostgresArrayType(normalizedType) {
+			return makeNullable("any", "")
+		}
 		switch {
 		case strings.HasPrefix(normalizedType, "smallserial"):
 			return makeNullable("int16", "")
@@ -101,7 +105,7 @@ func (m *Model) getGoType(sqlType string, isUnsigned, isNullable bool) (string, 
 			return makeNullable("int32", "")
 		case strings.HasPrefix(normalizedType, "bigserial"):
 			return makeNullable("int64", "")
-		case strings.HasPrefix(normalizedType, "character varying"), strings.HasPrefix(normalizedType, "varchar"):
+		case isPostgresScalarVarcharType(normalizedType):
 			return makeNullable("string", "")
 		case strings.HasPrefix(normalizedType, "uuid"):
 			return makeNullable("string", "")
@@ -175,6 +179,23 @@ func (m *Model) getGoType(sqlType string, isUnsigned, isNullable bool) (string, 
 	}
 }
 
+func isPostgresArrayType(typeStr string) bool {
+	normalizedType := strings.ToLower(strings.TrimSpace(typeStr))
+	return strings.Contains(normalizedType, "[]")
+}
+
+func isPostgresScalarVarcharType(typeStr string) bool {
+	normalizedType := strings.ToLower(strings.TrimSpace(typeStr))
+	if isPostgresArrayType(normalizedType) {
+		return false
+	}
+
+	return normalizedType == "character varying" ||
+		strings.HasPrefix(normalizedType, "character varying(") ||
+		normalizedType == "varchar" ||
+		strings.HasPrefix(normalizedType, "varchar(")
+}
+
 // parseSQL parses the provided SQL schema string to extract table and field information.
 // It updates the Model struct with the extracted information.
 //
@@ -193,6 +214,7 @@ func (m *Model) parseSQL(sql string) error {
 	m.SchemaName = ""
 	m.PrimaryKeyName = ""
 	m.HasPrimaryKey = false
+	m.HasCompositePrimaryKey = false
 	m.IDType = ""
 	m.UseGormModel = false
 
@@ -221,13 +243,13 @@ func (m *Model) parseSQL(sql string) error {
 			}
 		case "primary", "unique", "key", "index", "foreign", "engine", "default", "collate", "comment":
 			// Ignore constraint, index, and table-level configuration lines.
-			if primaryKeyName := m.extractPrimaryKeyName(originalLine); primaryKeyName != "" {
-				m.markPrimaryKey(primaryKeyName)
+			if primaryKeyColumns := m.extractPrimaryKeyColumns(originalLine); len(primaryKeyColumns) > 0 {
+				m.markPrimaryKeys(primaryKeyColumns)
 			}
 			continue
 		case "constraint":
-			if primaryKeyName := m.extractPrimaryKeyName(originalLine); primaryKeyName != "" {
-				m.markPrimaryKey(primaryKeyName)
+			if primaryKeyColumns := m.extractPrimaryKeyColumns(originalLine); len(primaryKeyColumns) > 0 {
+				m.markPrimaryKeys(primaryKeyColumns)
 			}
 			continue
 		default:
@@ -255,6 +277,7 @@ func (m *Model) parseSQL(sql string) error {
 		}
 	}
 
+	m.refreshPrimaryKeyMetadata()
 	m.UseGormModel = m.canUseGormModel()
 	if prioritizedField := m.prioritizedField(); prioritizedField != nil {
 		m.IDType = m.generatedIDType(prioritizedField)
@@ -320,11 +343,6 @@ func (m *Model) parseFieldDefinition(originalLine, fieldName string, parts []str
 	// Determine the Go type and any required import for the field.
 	fieldType, importPath := m.getGoType(typeStr, field.IsUnsigned, field.IsNullable)
 	field.Type = fieldType
-	if field.IsPrimaryKey {
-		m.HasPrimaryKey = true
-		m.PrimaryKeyName = field.JsonName
-		m.IDType = fieldType
-	}
 
 	if importPath != "" {
 		m.Imports[importPath] = struct{}{}
@@ -400,7 +418,8 @@ func (m *Model) generateGormTag(field *Field, typeStr string) string {
 	tags = append(tags, fmt.Sprintf("column:%s", field.JsonName))
 
 	// Type specification for certain types
-	baseType := strings.ToLower(strings.Split(typeStr, "(")[0])
+	normalizedType := strings.ToLower(strings.TrimSpace(typeStr))
+	baseType := strings.ToLower(strings.Split(normalizedType, "(")[0])
 	if m.Dialect == "mysql" {
 		switch baseType {
 		case "varchar", "char":
@@ -416,7 +435,7 @@ func (m *Model) generateGormTag(field *Field, typeStr string) string {
 		case "text", "tinytext", "mediumtext", "longtext":
 			tags = append(tags, fmt.Sprintf("type:%s", baseType))
 		}
-	} else {
+	} else if !isPostgresArrayType(normalizedType) {
 		switch baseType {
 		case "numeric":
 			if field.Size > 0 && field.Scale > 0 {
@@ -473,25 +492,17 @@ func (m *Model) generateCode() (string, error) {
 
 	displayFields := m.templateFields()
 	primaryKeyFieldName := ""
-	primaryKeyName := m.PrimaryKeyName
-	if primaryKeyName == "" {
-		primaryKeyName = "id"
-	}
 	if primaryKeyField := m.primaryKeyField(); primaryKeyField != nil {
 		primaryKeyFieldName = primaryKeyField.Name
 	}
-	prioritizedFieldName := ""
-	hasPrioritizedField := false
-	prioritizedField := m.prioritizedField()
-	if prioritizedField != nil {
-		hasPrioritizedField = true
-		prioritizedFieldName = m.generatedFieldName(prioritizedField)
-	}
+	identifierColumnName := m.identifierColumnName()
+	identifierFieldName := m.identifierFieldName()
+	supportsSingleIdentifierOps := m.supportsSingleIdentifierOps()
 
 	structNameFirstLetter := strings.ToLower(m.StructName[0:1])
 	defaultOrderExpr := ""
-	if prioritizedField != nil {
-		defaultOrderExpr = fmt.Sprintf("%s desc", prioritizedField.JsonName)
+	if supportsSingleIdentifierOps {
+		defaultOrderExpr = fmt.Sprintf("%s desc", identifierColumnName)
 	}
 
 	// Parse the model template.
@@ -499,21 +510,23 @@ func (m *Model) generateCode() (string, error) {
 	var result strings.Builder
 	// Execute the template with the model data.
 	err := tmpl.Execute(&result, map[string]interface{}{
-		"Package":               m.PackageName,
-		"StructName":            m.StructName,
-		"StructNameFirstLetter": structNameFirstLetter,
-		"StructNameLower":       strings.ToLower(m.StructName),
-		"TableName":             m.qualifiedTableName(),
-		"TableFields":           displayFields,
-		"Imports":               m.Imports,
-		"UseGormModel":          m.UseGormModel,
-		"IDType":                m.IDType,
-		"PrimaryKeyName":        primaryKeyName,
-		"PrimaryKeyFieldName":   primaryKeyFieldName,
-		"PrioritizedFieldName":  prioritizedFieldName,
-		"HasPrioritizedField":   hasPrioritizedField,
-		"DefaultOrderExpr":      defaultOrderExpr,
-		"HasPrimaryKey":         m.HasPrimaryKey,
+		"Package":                     m.PackageName,
+		"StructName":                  m.StructName,
+		"StructNameFirstLetter":       structNameFirstLetter,
+		"StructNameLower":             strings.ToLower(m.StructName),
+		"TableName":                   m.qualifiedTableName(),
+		"TableFields":                 displayFields,
+		"Imports":                     m.Imports,
+		"UseGormModel":                m.UseGormModel,
+		"IDType":                      m.IDType,
+		"PrimaryKeyName":              m.PrimaryKeyName,
+		"PrimaryKeyFieldName":         primaryKeyFieldName,
+		"IdentifierColumnName":        identifierColumnName,
+		"IdentifierFieldName":         identifierFieldName,
+		"SupportsSingleIdentifierOps": supportsSingleIdentifierOps,
+		"DefaultOrderExpr":            defaultOrderExpr,
+		"HasPrimaryKey":               m.HasPrimaryKey,
+		"HasCompositePrimaryKey":      m.HasCompositePrimaryKey,
 	})
 	if err != nil {
 		return "", err
@@ -652,38 +665,42 @@ func (m *Model) extractTypeDefinition(parts []string) string {
 	return strings.Join(typeParts, " ")
 }
 
-func (m *Model) extractPrimaryKeyName(line string) string {
+func (m *Model) extractPrimaryKeyColumns(line string) []string {
 	re := regexp.MustCompile(`(?i)primary\s+key\s*\(([^)]+)\)`)
 	matches := re.FindStringSubmatch(line)
 	if len(matches) < 2 {
-		return ""
+		return nil
 	}
 
 	columns := strings.Split(matches[1], ",")
-	if len(columns) != 1 {
-		return ""
-	}
-
-	return m.cleanIdentifier(columns[0])
-}
-
-func (m *Model) markPrimaryKey(columnName string) {
-	for i := range m.TableFields {
-		if m.TableFields[i].JsonName != columnName {
+	result := make([]string, 0, len(columns))
+	for _, column := range columns {
+		cleaned := m.cleanIdentifier(column)
+		if cleaned == "" {
 			continue
 		}
-		m.TableFields[i].IsPrimaryKey = true
-		m.TableFields[i].IsNullable = false
-		fieldType, importPath := m.getGoType(m.TableFields[i].SQLType, m.TableFields[i].IsUnsigned, m.TableFields[i].IsNullable)
-		m.TableFields[i].Type = fieldType
-		if importPath != "" {
-			m.Imports[importPath] = struct{}{}
+		result = append(result, cleaned)
+	}
+
+	return result
+}
+
+func (m *Model) markPrimaryKeys(columnNames []string) {
+	for _, columnName := range columnNames {
+		for i := range m.TableFields {
+			if m.TableFields[i].JsonName != columnName {
+				continue
+			}
+			m.TableFields[i].IsPrimaryKey = true
+			m.TableFields[i].IsNullable = false
+			fieldType, importPath := m.getGoType(m.TableFields[i].SQLType, m.TableFields[i].IsUnsigned, m.TableFields[i].IsNullable)
+			m.TableFields[i].Type = fieldType
+			if importPath != "" {
+				m.Imports[importPath] = struct{}{}
+			}
+			m.TableFields[i].GormTag = m.generateGormTag(&m.TableFields[i], m.TableFields[i].SQLType)
+			break
 		}
-		m.HasPrimaryKey = true
-		m.PrimaryKeyName = columnName
-		m.IDType = m.TableFields[i].Type
-		m.TableFields[i].GormTag = m.generateGormTag(&m.TableFields[i], m.TableFields[i].SQLType)
-		return
 	}
 }
 
@@ -728,16 +745,48 @@ func (m *Model) templateFields() []Field {
 	return fields
 }
 
-func (m *Model) primaryKeyField() *Field {
+func (m *Model) primaryKeyFields() []*Field {
+	fields := make([]*Field, 0, len(m.TableFields))
 	for i := range m.TableFields {
-		if m.TableFields[i].IsPrimaryKey {
-			return &m.TableFields[i]
+		if !m.TableFields[i].IsPrimaryKey {
+			continue
 		}
+		fields = append(fields, &m.TableFields[i])
 	}
-	return nil
+	return fields
+}
+
+func (m *Model) refreshPrimaryKeyMetadata() {
+	m.PrimaryKeyName = ""
+	m.HasPrimaryKey = false
+	m.HasCompositePrimaryKey = false
+	m.IDType = ""
+
+	primaryKeyFields := m.primaryKeyFields()
+	switch len(primaryKeyFields) {
+	case 0:
+		return
+	case 1:
+		m.HasPrimaryKey = true
+		m.PrimaryKeyName = primaryKeyFields[0].JsonName
+		m.IDType = primaryKeyFields[0].Type
+	default:
+		m.HasCompositePrimaryKey = true
+	}
+}
+
+func (m *Model) primaryKeyField() *Field {
+	primaryKeyFields := m.primaryKeyFields()
+	if len(primaryKeyFields) != 1 {
+		return nil
+	}
+	return primaryKeyFields[0]
 }
 
 func (m *Model) prioritizedField() *Field {
+	if len(m.primaryKeyFields()) > 1 {
+		return nil
+	}
 	if primaryKeyField := m.primaryKeyField(); primaryKeyField != nil {
 		return primaryKeyField
 	}
@@ -749,6 +798,24 @@ func (m *Model) prioritizedField() *Field {
 	}
 
 	return nil
+}
+
+func (m *Model) supportsSingleIdentifierOps() bool {
+	return m.prioritizedField() != nil
+}
+
+func (m *Model) identifierColumnName() string {
+	if prioritizedField := m.prioritizedField(); prioritizedField != nil {
+		return prioritizedField.JsonName
+	}
+	return ""
+}
+
+func (m *Model) identifierFieldName() string {
+	if prioritizedField := m.prioritizedField(); prioritizedField != nil {
+		return m.generatedFieldName(prioritizedField)
+	}
+	return ""
 }
 
 func (m *Model) generatedIDType(field *Field) string {
@@ -1038,12 +1105,8 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 	}
 
 	// Perform the database query with context.
-	{{- if .HasPrioritizedField}}
+	{{- if .SupportsSingleIdentifierOps}}
 	if err := query.Order("{{.DefaultOrderExpr}}").First(&{{.StructNameLower}}).Error; err != nil {
-	{{- else}}
-	return nil, fmt.Errorf("find last failed: no primary key or id field available for ordering")
-	{{- end}}
-	{{- if .HasPrioritizedField}}
 		// If no record is found, return nil without an error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -1051,19 +1114,21 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 		// Return the error if the query fails.
 		return nil, fmt.Errorf("find last failed: %w", err)
 	}
-	{{- end}}
 
 	return &{{.StructNameLower}}, nil
+	{{- else}}
+	return nil, fmt.Errorf("find last failed: no primary key or id field available for ordering")
+	{{- end}}
 }
 
-// Create inserts a new {{.StructNameLower}} into the database and returns the ID of the created {{.StructName}}.
+// Create inserts a new {{.StructNameLower}} into the database and returns its single identifier when available.
 //
 // Parameters:
 // 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
 // 	- db: *gorm.DB database connection.
 //
 // Returns:
-// 	- uint: ID of the created {{.StructNameLower}}.
+// 	- {{.IDType}}: identifier of the created {{.StructNameLower}} when a single identifier field is available, otherwise the zero value.
 // 	- error: error if the insert operation fails, otherwise nil.
 func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, db *gorm.DB) ({{.IDType}}, error) {
 	// Perform the database insert operation with context.
@@ -1071,8 +1136,8 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, d
 		return *new({{.IDType}}), fmt.Errorf("create failed: %w", err)
 	}
 
-	{{- if .HasPrioritizedField}}
-	return {{.StructNameFirstLetter}}.{{.PrioritizedFieldName}}, nil
+	{{- if .SupportsSingleIdentifierOps}}
+	return {{.StructNameFirstLetter}}.{{.IdentifierFieldName}}, nil
 	{{- else}}
 	return *new({{.IDType}}), nil
 	{{- end}}
@@ -1117,10 +1182,10 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Updates(ctx context.Context, 
 	if {{.StructNameFirstLetter}}.queryCondition != nil {
 		query = query.Where({{.StructNameFirstLetter}}.queryCondition, {{.StructNameFirstLetter}}.queryArgs...)
 	} else {
-		{{- if .HasPrimaryKey}}
-		if {{.StructNameFirstLetter}}.{{.PrimaryKeyFieldName}} != *new({{.IDType}}) {
-			// Use primary key for updates if available.
-			query = query.Where("{{.PrimaryKeyName}} = ?", {{.StructNameFirstLetter}}.{{.PrimaryKeyFieldName}})
+		{{- if .SupportsSingleIdentifierOps}}
+		if {{.StructNameFirstLetter}}.{{.IdentifierFieldName}} != *new({{.IDType}}) {
+			// Use the single identifier field for updates when available.
+			query = query.Where("{{.IdentifierColumnName}} = ?", {{.StructNameFirstLetter}}.{{.IdentifierFieldName}})
 		} else {
 			// Use struct fields as condition
 			query = query.Where({{.StructNameFirstLetter}})
@@ -1164,7 +1229,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) List(ctx context.Context, db 
 	return {{.StructNameLower}}s, nil
 }
 
-// ListByArgs retrieves {{.StructNameLower}}s matching the specified query and arguments from the database, ordered by ID in descending order.
+// ListByArgs retrieves {{.StructNameLower}}s matching the specified query and arguments from the database, ordered by primary key or id in descending order when available.
 //
 // Parameters:
 // 	- ctx: context.Context for managing request-scoped values, cancellation signals, and deadlines.
@@ -1179,7 +1244,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) ListByArgs(ctx context.Contex
 	var {{.StructNameLower}}s []{{.StructName}}
 
 	queryBuilder := db.WithContext(ctx).Model(&{{.StructName}}{}).Where(query, args...)
-	{{- if .HasPrioritizedField}}
+	{{- if .SupportsSingleIdentifierOps}}
 	queryBuilder = queryBuilder.Order("{{.DefaultOrderExpr}}")
 	{{- end}}
 

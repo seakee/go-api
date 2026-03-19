@@ -31,6 +31,10 @@ type Repository struct {
 
 // NewRepository creates a new instance of Repository.
 func NewRepository(model *Model) *Repository {
+	if model != nil && model.TableName != "" && (model.PackageName == "" || model.StructName == "") {
+		model.PackageName, model.StructName = model.generateNames(model.TableName)
+	}
+
 	return &Repository{
 		Model:           model,
 		PackageName:     model.PackageName,
@@ -52,16 +56,29 @@ func NewRepository(model *Model) *Repository {
 //   - A string containing the generated Go code.
 //   - An error if there is an issue generating the code.
 func (r *Repository) generateCode() (string, error) {
+	if r.Model.TableName == "" {
+		return "", fmt.Errorf("repository generation requires a table name")
+	}
+	if r.Model.PackageName == "" || r.Model.StructName == "" {
+		r.Model.PackageName, r.Model.StructName = r.Model.generateNames(r.Model.TableName)
+	}
+
 	// Set the package name and struct name based on the model.
 	r.PackageName = r.Model.PackageName
 	r.StructName = r.Model.StructName
 	r.ModelStructName = r.Model.StructName
 	r.TableName = r.Model.TableName
 	r.IDType = r.Model.IDType
-	r.PrimaryKeyName = r.Model.PrimaryKeyName
-	if r.PrimaryKeyName == "" {
-		r.PrimaryKeyName = "id"
+	if r.IDType == "" {
+		r.IDType = r.Model.generatedIDType(r.Model.prioritizedField())
 	}
+	if !r.Model.supportsSingleIdentifierOps() {
+		if len(r.Model.primaryKeyFields()) > 1 {
+			return "", fmt.Errorf("repository generation does not support composite primary keys for table %s", r.Model.qualifiedTableName())
+		}
+		return "", fmt.Errorf("repository generation requires a single-column primary key or id field for table %s", r.Model.qualifiedTableName())
+	}
+	r.PrimaryKeyName = r.Model.identifierColumnName()
 
 	// Add required imports
 	r.Imports["errors"] = struct{}{}
@@ -109,12 +126,7 @@ func (r *Repository) generateCode() (string, error) {
 }
 
 func (r *Repository) primaryKeyFieldName() string {
-	for _, field := range r.Model.TableFields {
-		if field.JsonName == r.PrimaryKeyName {
-			return field.Name
-		}
-	}
-	return "ID"
+	return r.Model.identifierFieldName()
 }
 
 // generateFieldChecks generates field check code for the Update method
