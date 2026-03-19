@@ -101,6 +101,8 @@ func (m *Model) getGoType(sqlType string, isUnsigned, isNullable bool) (string, 
 			return makeNullable("int32", "")
 		case strings.HasPrefix(normalizedType, "bigserial"):
 			return makeNullable("int64", "")
+		case strings.HasPrefix(normalizedType, "character varying"), strings.HasPrefix(normalizedType, "varchar"):
+			return makeNullable("string", "")
 		case strings.HasPrefix(normalizedType, "uuid"):
 			return makeNullable("string", "")
 		case strings.HasPrefix(normalizedType, "jsonb"):
@@ -234,9 +236,8 @@ func (m *Model) parseSQL(sql string) error {
 				continue
 			}
 
-			// Skip lines that contain table-level configurations
-			if strings.Contains(line, "engine") || strings.Contains(line, "charset") ||
-				strings.Contains(line, "collate") && !strings.Contains(line, "`") {
+			// Skip lines that contain table-level configurations.
+			if strings.Contains(line, "engine") || strings.Contains(line, "charset") {
 				continue
 			}
 
@@ -462,14 +463,27 @@ func (m *Model) generateGormTag(field *Field, typeStr string) string {
 func (m *Model) generateCode() (string, error) {
 	// Determine the package and struct names based on the table name.
 	m.PackageName, m.StructName = m.generateNames(m.TableName)
+	if m.TableName == "" {
+		return "", fmt.Errorf("table name is empty")
+	}
+	if m.PackageName == "" || m.StructName == "" {
+		return "", fmt.Errorf("invalid table name: %s", m.TableName)
+	}
+
 	displayFields := m.templateFields()
-	primaryKeyFieldName := "ID"
+	primaryKeyFieldName := ""
 	primaryKeyName := m.PrimaryKeyName
 	if primaryKeyName == "" {
 		primaryKeyName = "id"
 	}
 	if primaryKeyField := m.primaryKeyField(); primaryKeyField != nil {
 		primaryKeyFieldName = primaryKeyField.Name
+	}
+
+	structNameFirstLetter := strings.ToLower(m.StructName[0:1])
+	defaultOrderExpr := ""
+	if m.HasPrimaryKey {
+		defaultOrderExpr = fmt.Sprintf("%s desc", primaryKeyName)
 	}
 
 	// Parse the model template.
@@ -479,7 +493,7 @@ func (m *Model) generateCode() (string, error) {
 	err := tmpl.Execute(&result, map[string]interface{}{
 		"Package":               m.PackageName,
 		"StructName":            m.StructName,
-		"StructNameFirstLetter": strings.ToLower(m.StructName[0:1]),
+		"StructNameFirstLetter": structNameFirstLetter,
 		"StructNameLower":       strings.ToLower(m.StructName),
 		"TableName":             m.qualifiedTableName(),
 		"TableFields":           displayFields,
@@ -488,6 +502,7 @@ func (m *Model) generateCode() (string, error) {
 		"IDType":                m.IDType,
 		"PrimaryKeyName":        primaryKeyName,
 		"PrimaryKeyFieldName":   primaryKeyFieldName,
+		"DefaultOrderExpr":      defaultOrderExpr,
 		"HasPrimaryKey":         m.HasPrimaryKey,
 	})
 	if err != nil {
@@ -979,7 +994,11 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Last(ctx context.Context, db 
 	}
 
 	// Perform the database query with context.
+	{{- if .HasPrimaryKey}}
 	if err := query.Order("{{.PrimaryKeyName}} desc").First(&{{.StructNameLower}}).Error; err != nil {
+	{{- else}}
+	if err := query.Last(&{{.StructNameLower}}).Error; err != nil {
+	{{- end}}
 		// If no record is found, return nil without an error.
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -1006,7 +1025,11 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) Create(ctx context.Context, d
 		return *new({{.IDType}}), fmt.Errorf("create failed: %w", err)
 	}
 
+	{{- if .HasPrimaryKey}}
 	return {{.StructNameFirstLetter}}.{{.PrimaryKeyFieldName}}, nil
+	{{- else}}
+	return *new({{.IDType}}), nil
+	{{- end}}
 }
 
 // Delete removes the {{.StructNameLower}} from the database.
@@ -1109,8 +1132,13 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) List(ctx context.Context, db 
 func ({{.StructNameFirstLetter}} *{{.StructName}}) ListByArgs(ctx context.Context, db *gorm.DB, query interface{}, args ...interface{}) ([]{{.StructName}}, error) {
 	var {{.StructNameLower}}s []{{.StructName}}
 
+	queryBuilder := db.WithContext(ctx).Model(&{{.StructName}}{}).Where(query, args...)
+	{{- if .HasPrimaryKey}}
+	queryBuilder = queryBuilder.Order("{{.DefaultOrderExpr}}")
+	{{- end}}
+
 	// Perform the database query with context.
-	if err := db.WithContext(ctx).Model(&{{.StructName}}{}).Where(query, args...).Order("id desc").Find(&{{.StructNameLower}}s).Error; err != nil {
+	if err := queryBuilder.Find(&{{.StructNameLower}}s).Error; err != nil {
 		return nil, fmt.Errorf("list by args failed: %w", err)
 	}
 

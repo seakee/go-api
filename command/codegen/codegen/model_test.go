@@ -544,3 +544,95 @@ func TestModel_generateCodeCreateUsesTypedZeroValueOnError(t *testing.T) {
 		t.Fatalf("expected create error branch to return typed zero value, got:\n%s", code)
 	}
 }
+
+func TestModel_generateCodeWithoutPrimaryKeyCreateNoInvalidField(t *testing.T) {
+	m := NewModelWithDialect("postgres")
+	sqlContent := `CREATE TABLE logs (
+		message text NOT NULL
+	);`
+
+	if err := m.parseSQL(sqlContent); err != nil {
+		t.Fatalf("parseSQL() error = %v", err)
+	}
+
+	code, err := m.generateCode()
+	if err != nil {
+		t.Fatalf("generateCode() error = %v", err)
+	}
+
+	if strings.Contains(code, ".ID, nil") {
+		t.Fatalf("create branch should not return missing ID field when table has no primary key, got:\n%s", code)
+	}
+	if !strings.Contains(code, "return *new(uint), nil") {
+		t.Fatalf("create branch should return typed zero value when no primary key, got:\n%s", code)
+	}
+}
+
+func TestModel_generateCodeListByArgsUsesPrimaryKeyOrder(t *testing.T) {
+	m := NewModelWithDialect("postgres")
+	sqlContent := `CREATE TABLE oauth_apps (
+		app_uuid uuid PRIMARY KEY,
+		name varchar(80) NOT NULL
+	);`
+
+	if err := m.parseSQL(sqlContent); err != nil {
+		t.Fatalf("parseSQL() error = %v", err)
+	}
+
+	code, err := m.generateCode()
+	if err != nil {
+		t.Fatalf("generateCode() error = %v", err)
+	}
+
+	if !strings.Contains(code, `queryBuilder = queryBuilder.Order("app_uuid desc")`) {
+		t.Fatalf("expected ListByArgs to use parsed primary key for order, got:\n%s", code)
+	}
+	if strings.Contains(code, `Order("id desc")`) {
+		t.Fatalf("expected ListByArgs not to hardcode id ordering, got:\n%s", code)
+	}
+}
+
+func TestModel_generateCodeEmptyTableNameReturnsError(t *testing.T) {
+	m := NewModel()
+
+	if _, err := m.generateCode(); err == nil {
+		t.Fatal("expected generateCode() to return error when table name is empty")
+	}
+}
+
+func TestModel_getGoTypePostgresCharacterVarying(t *testing.T) {
+	m := NewModelWithDialect("postgres")
+
+	result, _ := m.getGoType("character varying(80)", false, false)
+	if result != "string" {
+		t.Fatalf("getGoType(character varying(80)) = %s, want string", result)
+	}
+
+	nullableResult, _ := m.getGoType("character varying(80)", false, true)
+	if nullableResult != "*string" {
+		t.Fatalf("getGoType(nullable character varying(80)) = %s, want *string", nullableResult)
+	}
+}
+
+func TestModel_parseSQLPostgresFieldWithCollate(t *testing.T) {
+	m := NewModelWithDialect("postgres")
+	sqlContent := `CREATE TABLE "public"."users" (
+		"name" character varying(80) COLLATE "en_US" NOT NULL
+	);`
+
+	if err := m.parseSQL(sqlContent); err != nil {
+		t.Fatalf("parseSQL() error = %v", err)
+	}
+
+	if len(m.TableFields) != 1 {
+		t.Fatalf("expected 1 parsed field, got %d", len(m.TableFields))
+	}
+
+	field := m.TableFields[0]
+	if field.JsonName != "name" {
+		t.Fatalf("field.JsonName = %s, want name", field.JsonName)
+	}
+	if field.Type != "string" {
+		t.Fatalf("field.Type = %s, want string", field.Type)
+	}
+}
