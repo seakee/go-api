@@ -689,6 +689,27 @@ func TestModel_generateCodeListByArgsUsesPrimaryKeyOrder(t *testing.T) {
 	}
 }
 
+func TestModel_generateCodeListByArgsUsesImplicitIDOrder(t *testing.T) {
+	m := NewModelWithDialect("postgres")
+	sqlContent := `CREATE TABLE logs (
+		id bigint generated always as identity,
+		message text NOT NULL
+	);`
+
+	if err := m.parseSQL(sqlContent); err != nil {
+		t.Fatalf("parseSQL() error = %v", err)
+	}
+
+	code, err := m.generateCode()
+	if err != nil {
+		t.Fatalf("generateCode() error = %v", err)
+	}
+
+	if !strings.Contains(code, `queryBuilder = queryBuilder.Order("id desc")`) {
+		t.Fatalf("expected ListByArgs to use implicit id ordering, got:\n%s", code)
+	}
+}
+
 func TestModel_generateCodeEmptyTableNameReturnsError(t *testing.T) {
 	m := NewModel()
 

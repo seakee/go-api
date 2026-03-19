@@ -1179,7 +1179,7 @@ func ({{.StructNameFirstLetter}} *{{.StructName}}) ListByArgs(ctx context.Contex
 	var {{.StructNameLower}}s []{{.StructName}}
 
 	queryBuilder := db.WithContext(ctx).Model(&{{.StructName}}{}).Where(query, args...)
-	{{- if .HasPrimaryKey}}
+	{{- if .HasPrioritizedField}}
 	queryBuilder = queryBuilder.Order("{{.DefaultOrderExpr}}")
 	{{- end}}
 
