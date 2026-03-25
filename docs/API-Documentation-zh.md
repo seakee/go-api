@@ -39,7 +39,11 @@ app_secret: string (必需) - 应用密钥
 ```json
 {
   "code": 0,
-  "message": "ok",
+  "msg": "ok",
+  "trace": {
+    "id": "afeade2f5957-tcdtjo-gdmaj",
+    "desc": ""
+  },
   "data": {
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "expires_in": 604800
@@ -79,7 +83,11 @@ Content-Type: application/json
 ```json
 {
   "code": 0,
-  "message": "ok",
+  "msg": "ok",
+  "trace": {
+    "id": "afeade2f5957-tcdtjo-gdmaj",
+    "desc": ""
+  },
   "data": {
     "app_id": "generated_app_id",
     "app_secret": "generated_app_secret"
@@ -99,7 +107,11 @@ Content-Type: application/json
 ```json
 {
   "code": 0,
-  "message": "ok",
+  "msg": "ok",
+  "trace": {
+    "id": "afeade2f5957-tcdtjo-gdmaj",
+    "desc": ""
+  },
   "data": null
 }
 ```
@@ -114,7 +126,11 @@ Content-Type: application/json
 ```json
 {
   "code": 0,
-  "message": "ok",
+  "msg": "ok",
+  "trace": {
+    "id": "afeade2f5957-tcdtjo-gdmaj",
+    "desc": ""
+  },
   "data": null
 }
 ```
@@ -126,12 +142,19 @@ Content-Type: application/json
 ```json
 {
   "code": 0,
-  "message": "ok",
+  "msg": "ok",
+  "trace": {
+    "id": "afeade2f5957-tcdtjo-gdmaj",
+    "desc": ""
+  },
   "data": {
     // 响应数据
   }
 }
 ```
+
+- `trace.id` 来自请求头 `X-Trace-ID`，如果没有传入则由服务端自动生成。
+- `trace.desc` 通常为空字符串，只有在非生产环境且开启调试时才会返回错误详情。
 
 ### 响应代码
 
@@ -157,7 +180,11 @@ Content-Type: application/json
 ```json
 {
   "code": 400,
-  "message": "Request parameter error",
+  "msg": "Request parameter error",
+  "trace": {
+    "id": "afeade2f5957-tcdtjo-gdmaj",
+    "desc": ""
+  },
   "data": null
 }
 ```
@@ -169,7 +196,11 @@ Content-Type: application/json
 ```json
 {
   "code": 10001,
-  "message": "Unauthorized",
+  "msg": "Unauthorized",
+  "trace": {
+    "id": "afeade2f5957-tcdtjo-gdmaj",
+    "desc": ""
+  },
   "data": null
 }
 ```
@@ -181,7 +212,11 @@ Content-Type: application/json
 ```json
 {
   "code": 500,
-  "message": "fail",
+  "msg": "fail",
+  "trace": {
+    "id": "afeade2f5957-tcdtjo-gdmaj",
+    "desc": ""
+  },
   "data": null
 }
 ```
@@ -210,7 +245,11 @@ size: int (默认: 20, 最大: 100) - 每页项目数
 ```json
 {
   "code": 0,
-  "message": "ok",
+  "msg": "ok",
+  "trace": {
+    "id": "afeade2f5957-tcdtjo-gdmaj",
+    "desc": ""
+  },
   "data": {
     "items": [...],
     "pagination": {
